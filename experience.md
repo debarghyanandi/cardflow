@@ -1,0 +1,130 @@
+# Cardflow engineering experience
+
+Last updated: 2026-09-26, after the first fully passing GitHub Actions run for Phases 0–3.
+
+This is a living account of how we built Cardflow, what we actually ran, and how we diagnosed mistakes. It complements [`architecture.md`](architecture.md), which describes the intended system, and [`codex-prompt.md`](codex-prompt.md), which defines the phase gates. Add to this file whenever a later phase changes the design, exposes a failure, or gains new verification. Do not rewrite a failed attempt as if it never happened.
+
+## Working agreement and current position
+
+- Build one phase at a time. Do not start the next phase until the user asks.
+- Explain each small implementation in chat so the user can learn the reasoning.
+- Run the app and tests before claiming success. A local pass is not a GitHub Actions pass.
+- Commit logical units. Red tests and real mistakes may appear in history, but leave the phase in a passing state.
+- Ask the user for manual work such as `git push` and cloud setup. The user puts long logs in the ignored `temp-ref/` directory.
+- Phase 0 (local stack), Phase 1 (REST board), Phase 2 (real-time), and Phase 3 (optimistic browser and reconnect) are implemented. Phase 4 has not started. The latest supplied GitHub Actions log is green.
+
+The only untracked file currently visible outside this document is `src/Cardflow.Api/Properties/launchSettings.json`; it belongs to the local environment and has deliberately not been staged.
+
+## Where the pieces are
+
+| Concern | Main location | Why it is there |
+|---|---|---|
+| Browser app | `web/src/App.tsx`, `web/src/boardState.ts` | React view and pure event/rollback rules |
+| HTTP endpoints | `src/Cardflow.Api/Program.cs` | ASP.NET Core Minimal APIs; there is no controller class |
+| Board rules | `src/Cardflow.Api/Boards/BoardService.cs` and `BoardCommandService.cs` | Both REST and SignalR use the same business logic |
+| Real-time entry | `src/Cardflow.Api/Realtime/BoardHub.cs` | Thin hub: authorize/join, call a service, broadcast |
+| Persistence | `src/Cardflow.Api/Data/` | EF Core model and PostgreSQL migrations |
+| Local stack | `compose.yaml`, `infra/nginx/default.conf` | PostgreSQL, Redis, two APIs, nginx |
+| CI | `.github/workflows/ci.yml` | Build, database, two-instance, convergence, and browser checks |
+
+The browser is intentionally separate from Docker Compose at this stage. Compose runs the backing services; Vite serves the browser during development. From the repo root in PowerShell:
+
+```powershell
+docker compose up -d --build --wait
+cd web
+npm.cmd ci
+npm.cmd run dev
+```
+
+Open `http://127.0.0.1:5173`. `npm.cmd` is used because PowerShell on this machine blocks the `npm.ps1` shim. Static browser hosting is not yet part of the Compose stack.
+
+## How we approached each phase
+
+### Phase 0 — Make the environment real first
+
+We began with the requested repository layout, a .NET 10 API solution, `/health`, Docker Compose with PostgreSQL and Redis, **two** API instances behind nginx, and a GitHub Actions workflow. The first test used Testcontainers to connect to a real PostgreSQL server. The user confirmed Docker 29.6.1 was running. Two instances mattered from day one because a real-time bug can remain invisible with only one process. We committed this foundation as `d968282`.
+
+The user could not paste long CLI output into chat, so we ignored `temp-ref/` in Git (`eb3202a`). That directory is a diagnostic hand-off, not project source. We read logs from it and do not stage it.
+
+### Phase 1 — Board state before real-time delivery
+
+We added boards, members, columns, cards, anonymous session cookies, join-by-secret-link, and REST operations (`717ce8a`). PostgreSQL migrations create the real schema. A snapshot returns columns, cards, members, and later the board's event sequence.
+
+The difficult part was card order. Integer positions require updating many rows when inserting in the middle. We used canonical binary fractional ranks instead: a normal insert computes a rank between neighbours and writes only its own row. Equal ranks sort by card ID, so concurrent same-gap inserts still have one deterministic order. A minute-by-minute background sweep redistributes ranks if they grow beyond 50 characters. Tests covered start/middle/end ranks, repeated insertion, one-row writes, stable tie-breaking, membership, and stale-version rejection.
+
+Two design corrections are recorded in the architecture decision log: arbitrary strings do **not** always have a midpoint (prefix-adjacent values break that claim), so generated ranks use a canonical binary form and PostgreSQL `C` collation (D9). The earlier wording “last write wins” contradicted rejecting a stale version; the intended rule is that the first valid edit wins and the later stale edit gets a conflict (D10). We changed the explanation rather than hiding the contradiction.
+
+### Phase 2 — Event transaction, then cross-instance delivery
+
+We first committed a failing schema test (`994fd60`): it expected `board_events` and `boards.event_seq`, but the old schema had neither. This made the missing behavior visible. The migration (`eeac849`) added a per-board sequence and an append-only event table.
+
+Next, `BoardCommandService` wrapped each production mutation and its event insert in **one PostgreSQL transaction** (`4fd0361`). An `UPDATE boards ... RETURNING event_seq` assigns a monotonic sequence for that board. A test forced the event insert to fail and verified that the card row and sequence increment rolled back too. This is stronger evidence than merely checking that both calls exist in code.
+
+The SignalR hub stayed thin: it checks membership through services, joins a board group, calls a command service, and broadcasts the committed event. Redis is the SignalR backplane, so a socket on API 1 can hear a write handled by API 2 (`3b5e9c3`). A separate two-instance test and CI step prove both REST-to-socket and hub-to-socket delivery (`f23fa91`). We also made broadcasting independent of the caller's cancellation after commit: if a caller disconnects after the database commit, the accepted write remains accepted, and clients can later catch up from the event log.
+
+The architecture initially combined fallback SignalR transports with a claim that sticky sessions were unnecessary. Those claims do not hold together for this setup. We chose WebSockets-only with negotiation skipped and documented the decision (D11). If fallback transports are added later, session affinity must be revisited.
+
+### Phase 3 — Rollback first, then reconnect and convergence
+
+We started with a red catch-up test (`19ab67c`), then implemented `CatchUp` (`232d3be`). The client supplies the last sequence it applied. The server replays up to 500 contiguous events; if it is more than 500 behind or any event in that interval is missing, it returns a fresh snapshot. The client joins the SignalR group before catch-up and buffers any live events that arrive during the catch-up call. This closes the gap between the original REST snapshot and the socket opening.
+
+Events are a bounded reconnect buffer, not a permanent audit log. A periodic prune removes events older than seven days or outside the newest 5,000 per board. A database test proved both deletion rules and snapshot fallback over a pruned gap (`14cb333`).
+
+The React/Vite board (`a2fab83`) uses TanStack Query for the first REST snapshot, SignalR for live changes, and dnd-kit for dragging. Confirmed server state is kept separate from at most one pending move. The pending move changes the visible order immediately; a failed hub invocation discards it, restoring the untouched confirmed state. Unit tests cover cross-column and within-column rollback, duplicate events, and gap detection. The browser sends neighbour card IDs; the server computes the canonical rank, so rank logic is not duplicated in TypeScript (D12). One board model was small enough for React state plus a pure projector, so we did not add Zustand (D13).
+
+The phase's headline test starts 20 simulated SignalR clients across the two API instances, fires 200 concurrent mixed card operations, waits for all clients to reach the final sequence, and compares each card order with a fresh PostgreSQL snapshot. Playwright also proves an accepted online drag, rollback after the WebSocket is severed, and replay of 50 changes made while a browser is disconnected. These tests were added to CI (`26888fc`).
+
+## Debugging journal: evidence → cause → change → proof
+
+### A test can be wrong before the feature is wrong
+
+The first Phase 3 test did not compile because a raw interpolated C# SQL string contained JSON `{}`. We replaced that literal with `jsonb_build_object()`, then got the **intended** red failure: `BoardSyncService` did not exist. Later, the 600-event fallback test failed even after implementing catch-up. The test had updated PostgreSQL with raw SQL but reused an EF context tracking the old board sequence. A reconnect is a new request with a fresh context; changing the test to use a fresh context made it model production correctly. Lesson: when a test fails, inspect the fixture and its cached state before changing application logic.
+
+### A compile error caught an incorrect assumption
+
+While building the two-instance test, we treated `CookieContainer` as `IDisposable`. It is not. The compiler stopped the build; we removed that disposal and rebuilt. We explained this as a real mistake rather than fabricating an error for the commit history.
+
+### A stress test found database connection exhaustion
+
+The first 20-client/200-operation run produced PostgreSQL SQLSTATE `53300` (“too many clients already”). Both API instances could open enough pooled connections to exceed PostgreSQL's default connection limit. Many HTTP errors then appeared as JSON parse errors because the development server returned plain-text exception pages. We capped each API pool at 20 connections in Compose, so excess requests wait for a pooled connection. We also made the test report only a few concise failures. The unchanged 200-operation workload then passed. Lesson: the first *server* error in a noisy failure report matters more than dozens of follow-on client parse errors.
+
+### Browser tests distinguished a visual guess from a commit
+
+The first Playwright drag dropped over the source rather than the empty destination. We excluded the active card from dnd-kit collision candidates and used an explicit destination point in the browser test. Then the test appeared to fail waiting for `Event #6`: the move had actually committed as `Event #5` (board creation, two columns, card creation, then move). We traced the drop IDs, hub completion, live event, and catch-up sequence before correcting the assertion. The final test waits for the committed sequence before severing the WebSocket, then verifies the next drag rolls back. Lesson: seeing a card move optimistically is **not** evidence that the server accepted it.
+
+### CI failure 1: nginx was sampled during startup
+
+An early GitHub Actions log stopped in “Check nginx and both API instances.” The check made 12 rapid `/health` requests and saw only `api1`. Container logs showed nginx had tried both API processes before they were listening, briefly marked the upstreams unavailable, and then recovered. The log's later container shutdown was the workflow's `if: always()` cleanup, **not** the cause. We shortened nginx's upstream failure window and changed CI to wait for both instances rather than deciding from an immediate burst (`81941f4`).
+
+### CI failure 2: the direct check failed before the nginx loop
+
+The next log again stopped in the smoke step, but this time there was no sampled output at all. Its first command tested `http://localhost:8081/health` and exited almost immediately. Compose publishes that port on IPv4 `127.0.0.1`; on the Linux runner, `localhost` can select IPv6 `::1`. Startup timing was also possible. We changed direct checks and integration-test URLs to explicit `127.0.0.1` and added a readiness retry (`b69c518`). The subsequent hosted run printed `Direct API instances: api1, api2` and moved through the rest of CI. Lesson: a retry loop cannot help when an earlier command exits the step first; locate the exact first command that ran before exit code 1.
+
+### How we read the logs
+
+1. Search for `##[error]`, test failures, and the last `##[group]Run ...` before the error. That identifies the failing *step*.
+2. Read the commands at the start of that step and its last few output lines. In both smoke failures, this was more useful than the much longer container dump.
+3. Treat `docker compose logs` after a failed step as diagnostic context, not automatically as the primary failure. Startup 502s, nginx's read-only-config message, and Npgsql's optional `libgssapi_krb5.so.2` warning did not by themselves stop the final run.
+4. Reproduce the smallest relevant path locally: direct health URLs, two-instance WebSocket test, convergence workload, or browser drag. Keep the original acceptance test unchanged when fixing an overload bug.
+5. Verify the fix at the correct level, commit it, then ask the user to push. Only the pushed GitHub Actions run can establish that Linux CI is green.
+
+## Latest verification
+
+The most recent supplied `temp-ref/ci.logs.txt` is a passing GitHub Actions run on 2026-09-26. It shows:
+
+```text
+npm ci: 0 vulnerabilities
+Vite production build: passed
+Client state tests: 3 passed
+.NET/PostgreSQL tests: 19 passed
+Direct API instances: api1, api2
+Cross-instance SignalR test: 1 passed
+20-client/200-operation convergence test: passed
+Playwright browser tests: 2 passed
+```
+
+The workflow then ran `docker compose down` as planned. The Node/action deprecation warning during post-job cleanup was not a test failure. No AWS resources are deployed automatically.
+
+## Next update rule
+
+For every new phase or meaningful fix, append: the goal, the smallest test or observation used, the first failure and its evidence, the change, the command and output that verified it, the commit, and any manual user action. Mark a claim “local only” until the corresponding hosted CI or deployment evidence exists. Keep `temp-ref/` ignored; summarize its useful evidence here without copying secrets or entire logs.
