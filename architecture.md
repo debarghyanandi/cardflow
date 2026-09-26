@@ -141,7 +141,7 @@ A feature that breaks one of these is a bug, not a trade-off. Each one gets an a
 **API (.NET).** Two doors into the same application.
 
 - **REST** loads a board when the page opens, and handles anything not time-critical. It returns a snapshot plus a sequence number.
-- **SignalR hub** carries live changes both ways. SignalR is Microsoft's real-time library. It uses WebSockets when it can and falls back to slower transports when it cannot.
+- **SignalR hub** carries live changes both ways. SignalR is Microsoft's real-time library. Cardflow uses WebSockets only; the client skips transport negotiation.
 
 Both doors call the same service layer. **There is no business logic inside the hub.** The hub receives a message, calls a service, broadcasts what the service returns. This is what makes the logic testable without a socket, and it is the single most important structural rule in the project.
 
@@ -312,7 +312,7 @@ Browser A ──▶ instance 1 ──┐
 Browser B ──▶ instance 2 ──┘
 ```
 
-SignalR groups work across instances through the backplane. **No sticky sessions are needed** for WebSockets once the backplane is in place. Worth saying in the README, because most people assume the opposite.
+SignalR groups work across instances through the backplane. **No sticky sessions are needed only when clients use WebSockets exclusively and skip negotiation.** The client must set `WebSockets` as its only transport and `skipNegotiation: true`; the server only permits WebSockets on `/hubs/board`. Supporting fallback transports later would also require session affinity. Worth saying in the README, because the backplane alone does not remove that requirement.
 
 ---
 
@@ -413,6 +413,10 @@ The rank strings use only `0` and `1` and end in `1`. PostgreSQL uses `C` collat
 
 **D10 — First valid card edit wins.** `[decided]` 2026-09-26
 D4's heading said “last write wins,” but its version-check rule rejects a stale second write. The version-check rule is the intended behavior. *Why:* it tells the losing editor about the conflict instead of silently overwriting the accepted edit.
+
+**D11 — WebSockets-only SignalR connections.** `[decided]` 2026-09-26
+
+The browser client will use WebSockets with negotiation skipped, and the hub endpoint disallows fallback transports. *Why:* this makes the no-sticky-sessions claim true when using the Redis backplane. If fallback transports become necessary, add session affinity and revise that claim.
 
 ---
 

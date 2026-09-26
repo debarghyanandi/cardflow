@@ -53,6 +53,8 @@ jobs:
           test "$(printf '%s' "$snapshot" | jq -r '.columns[0].cards[0].title')" = First
           test "$(printf '%s' "$card" | jq -r .title)" = First
           test "$(printf '%s' "$snapshot" | jq -r '.members | length')" = 2
+      - name: Prove an event crosses API instances
+        run: dotnet test tests/Cardflow.MultiInstance.Tests/Cardflow.MultiInstance.Tests.csproj --configuration Release --logger "console;verbosity=normal"
       - name: Show container logs on failure
         if: failure()
         run: docker compose logs
