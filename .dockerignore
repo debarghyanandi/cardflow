@@ -1,0 +1,7 @@
+.git
+.vs
+**/bin
+**/obj
+tests
+architecture.md
+codex-prompt.md

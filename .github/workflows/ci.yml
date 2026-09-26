@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Run tests against real Postgres
+        run: dotnet test Cardflow.slnx --configuration Release --logger "console;verbosity=normal"
+      - name: Start two API instances behind nginx
+        run: docker compose up --build --detach --wait
+      - name: Check nginx and both API instances
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://localhost:8080/health >/dev/null; then break; fi
+            sleep 2
+          done
+          curl --fail --silent http://localhost:8080/health
+          instances=$(for i in $(seq 1 12); do curl --fail --silent http://localhost:8080/health; echo; done | jq -r .instance | sort -u)
+          printf '%s\n' "$instances"
+          test "$(printf '%s\n' "$instances" | tr '\n' ',')" = "api1,api2,"
+      - name: Show container logs on failure
+        if: failure()
+        run: docker compose logs
+      - name: Stop containers
+        if: always()
+        run: docker compose down

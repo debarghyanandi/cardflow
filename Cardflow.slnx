@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="src/Cardflow.Api/Cardflow.Api.csproj" />
+  <Project Path="tests/Cardflow.Api.Tests/Cardflow.Api.Tests.csproj" />
+</Solution>
