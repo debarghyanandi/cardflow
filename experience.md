@@ -1,6 +1,6 @@
 # Cardflow engineering experience
 
-Last updated: 2026-09-27, after local Phase 4 verification.
+Last updated: 2026-09-27, after the passing hosted Phase 4 run.
 
 This is a living account of how we built Cardflow, what we actually ran, and how we diagnosed mistakes. It complements [`architecture.md`](architecture.md), which describes the intended system, and [`codex-prompt.md`](codex-prompt.md), which defines the phase gates. Add to this file whenever a later phase changes the design, exposes a failure, or gains new verification. Do not rewrite a failed attempt as if it never happened.
 
@@ -11,7 +11,7 @@ This is a living account of how we built Cardflow, what we actually ran, and how
 - Run the app and tests before claiming success. A local pass is not a GitHub Actions pass.
 - Commit logical units. Red tests and real mistakes may appear in history, but leave the phase in a passing state.
 - Ask the user for manual work such as `git push` and cloud setup. The user puts long logs in the ignored `temp-ref/` directory.
-- Phases 0–3 have a passing GitHub Actions run. Phase 4 (presence) is implemented and passes locally; its hosted CI run has not yet been supplied.
+- Phases 0–4 have passing GitHub Actions runs. Phase 4 (presence) was verified locally and on the pushed commit `5ca6544`. Phase 5 has not started.
 
 The only untracked file currently visible outside this document is `src/Cardflow.Api/Properties/launchSettings.json`; it belongs to the local environment and has deliberately not been staged.
 
@@ -141,7 +141,15 @@ Mistakes and their evidence:
 4. The browser assertions then passed, but on Windows Playwright's auto-started Vite process did not exit after printing success. Starting Vite separately and letting Playwright reuse it produced a clean exit code 0. We did not count the earlier printed `ok` as a complete passing run.
 5. A review found that the first cursor handler queried PostgreSQL for membership on every pointer update. That contradicted the “cursors never touch Postgres” requirement. We retained membership checked at join, saved the authorized member/token in SignalR connection context, and rechecked that context on each cursor message. A second review found that cursor messages still refreshed Redis presence on every move; we removed that write too. Only the separate heartbeat refreshes Redis. If a tab was suspended long enough to expire, a failed heartbeat asks it to re-join. The final browser run used rebuilt API containers with both corrections.
 
-Final local evidence: `dotnet build Cardflow.slnx --configuration Release --no-restore` passed with zero warnings; `dotnet test Cardflow.slnx --configuration Release --no-build` passed 20 tests; the cross-instance SignalR test passed; `npm run build` and `npm test` passed; the 20-client/200-operation convergence test passed; all three Playwright tests passed with exit code 0 against the rebuilt two-API Compose stack. The Playwright presence test observed the live member, colour-coded cursor, editing marker, and disappearance after closing the guest tab. The Redis test proved that the sweep removes a stale orphan and leaves a fresh heartbeat intact. The browser test's fast disappearance was the disconnect path; the Redis test covers the fallback. The implementation commit is `e3d0e86`. Hosted CI for Phase 4 remains unverified until the user pushes and supplies its log.
+Final local evidence: `dotnet build Cardflow.slnx --configuration Release --no-restore` passed with zero warnings; `dotnet test Cardflow.slnx --configuration Release --no-build` passed 20 tests; the cross-instance SignalR test passed; `npm run build` and `npm test` passed; the 20-client/200-operation convergence test passed; all three Playwright tests passed with exit code 0 against the rebuilt two-API Compose stack. The Playwright presence test observed the live member, colour-coded cursor, editing marker, and disappearance after closing the guest tab. The Redis test proved that the sweep removes a stale orphan and leaves a fresh heartbeat intact. The browser test's fast disappearance was the disconnect path; the Redis test covers the fallback. The implementation commit is `e3d0e86`.
+
+### Hosted Phase 4 verification
+
+The user pushed `5ca6544` and supplied `temp-ref/ci.logs.txt`. The GitHub Actions run of 2026-09-26 19:38–19:40 UTC checked out that exact commit and passed: `npm ci` with zero reported vulnerabilities; Vite production build; three client-state tests; 20 .NET/PostgreSQL/Redis tests (including the orphan sweep); healthy direct APIs and nginx smoke checks; one cross-instance SignalR test; 20-client/200-operation convergence; and all three Playwright tests, including presence, cursor, editing marker, and tab close. The workflow then ran its planned `docker compose down`. The post-job Node.js 20 deprecation warning is from `actions/setup-node@v4` and did not fail the run. This closes the Phase 4 CI gate; it does not start Phase 5 or establish anything about AWS deployment.
+
+## Phase 5 — visual direction gate
+
+The user started Phase 5 on 2026-09-27. We read its scope before editing the UI: Tailwind pass, empty and loading states, share-link interaction, favicon, and an OG image. The phase explicitly requires showing two visual directions before committing to one. We inspected the existing React/CSS implementation and created `web/design/phase5-directions.svg` to compare a warm editorial direction and a crisp command-centre direction. Its SVG parsed successfully as XML, and we rendered `web/design/phase5-directions.png` so the user could see both themes directly in chat. We are waiting for the user's selection; no Phase 5 visual direction has been implemented yet. The preceding Phase 4 hosted-result edit in this file is still uncommitted; `launchSettings.json` remains untouched.
 
 ## Next update rule
 
