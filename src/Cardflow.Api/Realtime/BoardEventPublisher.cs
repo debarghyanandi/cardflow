@@ -1,4 +1,4 @@
-using Cardflow.Api.Boards;
+using Cardflow.Api.Contracts;
 using Microsoft.AspNetCore.SignalR;
 
 namespace Cardflow.Api.Realtime;

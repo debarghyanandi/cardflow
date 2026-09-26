@@ -1,3 +1,4 @@
+using Cardflow.Api.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace Cardflow.Api.Data;

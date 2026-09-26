@@ -1,9 +1,13 @@
-using Cardflow.Api.Boards;
+using Cardflow.Api.Contracts;
+using Cardflow.Api.Exceptions;
+using Cardflow.Api.Helpers;
+using Cardflow.Api.Providers;
+using Cardflow.Api.Services;
 using Microsoft.AspNetCore.SignalR;
 
 namespace Cardflow.Api.Realtime;
 
-public sealed class BoardHub(BoardService boards, BoardSyncService sync, BoardCommandService commands, BoardEventPublisher publisher, BoardPresence presence) : Hub
+public sealed class BoardHub(BoardService boards, BoardSyncService sync, BoardCommandService commands, BoardEventPublisher publisher, BoardPresenceProvider presence) : Hub
 {
     private const string BoardContextKey = "presence-board";
     private const string TokenContextKey = "presence-token";
@@ -91,7 +95,7 @@ public sealed class BoardHub(BoardService boards, BoardSyncService sync, BoardCo
     public Task<BoardSnapshot> RenameBoard(string token, RenameBoardRequest request) =>
         ChangeAsync(() => commands.RenameBoardAsync(token, Session(), request, Context.ConnectionAborted));
 
-    private string Session() => SessionCookies.Existing(Context.GetHttpContext()
+    private string Session() => SessionCookieHelper.Existing(Context.GetHttpContext()
         ?? throw new HubException("HTTP context is unavailable."));
 
     private async Task<(Guid BoardId, MemberView Member)> AuthorizedPresenceAsync(string token)
