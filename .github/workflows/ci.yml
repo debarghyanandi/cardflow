@@ -12,6 +12,17 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Build and test the browser state
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+          npm test
       - name: Run tests against real Postgres
         run: dotnet test Cardflow.slnx --configuration Release --logger "console;verbosity=normal"
       - name: Start two API instances behind nginx
@@ -55,6 +66,15 @@ jobs:
           test "$(printf '%s' "$snapshot" | jq -r '.members | length')" = 2
       - name: Prove an event crosses API instances
         run: dotnet test tests/Cardflow.MultiInstance.Tests/Cardflow.MultiInstance.Tests.csproj --configuration Release --logger "console;verbosity=normal"
+      - name: Prove 20 clients converge after 200 operations
+        working-directory: web
+        run: npm run test:convergence
+      - name: Install browser for the drag and reconnect test
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+      - name: Test browser rollback and reconnect
+        working-directory: web
+        run: npm run test:e2e
       - name: Show container logs on failure
         if: failure()
         run: docker compose logs
