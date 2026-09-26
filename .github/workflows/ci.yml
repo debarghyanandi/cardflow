@@ -30,13 +30,20 @@ jobs:
       - name: Check nginx and both API instances
         run: |
           set -euo pipefail
-          test "$(curl --fail --silent http://localhost:8081/health | jq -r .instance)" = api1
-          test "$(curl --fail --silent http://localhost:8082/health | jq -r .instance)" = api2
+          for attempt in $(seq 1 30); do
+            api1=$(curl --fail --silent http://127.0.0.1:8081/health | jq -r '.instance // empty' || true)
+            api2=$(curl --fail --silent http://127.0.0.1:8082/health | jq -r '.instance // empty' || true)
+            if [ "$api1" = api1 ] && [ "$api2" = api2 ]; then break; fi
+            sleep 1
+          done
+          printf 'Direct API instances: %s, %s\n' "$api1" "$api2"
+          test "$api1" = api1
+          test "$api2" = api2
           seen_api1=0
           seen_api2=0
           for attempt in $(seq 1 30); do
             for sample in $(seq 1 4); do
-              instance=$(curl --fail --silent http://localhost:8080/health | jq -r '.instance // empty' || true)
+              instance=$(curl --fail --silent http://127.0.0.1:8080/health | jq -r '.instance // empty' || true)
               if [ "$instance" = api1 ]; then seen_api1=1; fi
               if [ "$instance" = api2 ]; then seen_api2=1; fi
             done
@@ -53,9 +60,9 @@ jobs:
           trap 'rm -f "$cookie_file" "$guest_cookie_file"' EXIT
           board=$(curl --fail-with-body --silent --show-error -c "$cookie_file" \
             -H 'Content-Type: application/json' \
-            -d '{"title":"CI board","nickname":"Ada"}' http://localhost:8080/api/boards)
+            -d '{"title":"CI board","nickname":"Ada"}' http://127.0.0.1:8080/api/boards)
           token=$(printf '%s' "$board" | jq -r .token)
-          board_url="http://localhost:8080/api/boards/$token"
+          board_url="http://127.0.0.1:8080/api/boards/$token"
           column=$(curl --fail-with-body --silent --show-error -b "$cookie_file" \
             -H 'Content-Type: application/json' \
             -d '{"title":"Doing","previousColumnId":null,"nextColumnId":null}' "$board_url/columns")

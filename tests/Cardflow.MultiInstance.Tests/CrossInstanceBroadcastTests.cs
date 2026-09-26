@@ -16,10 +16,10 @@ public sealed class CrossInstanceBroadcastTests
         var cookies = new CookieContainer();
         using var http = new HttpClient(new HttpClientHandler { CookieContainer = cookies })
         {
-            BaseAddress = new Uri("http://localhost:8082")
+            BaseAddress = new Uri("http://127.0.0.1:8082")
         };
 
-        Assert.Equal("api1", (await new HttpClient().GetFromJsonAsync<Health>("http://localhost:8081/health", timeout.Token))?.Instance);
+        Assert.Equal("api1", (await new HttpClient().GetFromJsonAsync<Health>("http://127.0.0.1:8081/health", timeout.Token))?.Instance);
         Assert.Equal("api2", (await http.GetFromJsonAsync<Health>("/health", timeout.Token))?.Instance);
 
         using var boardResponse = await http.PostAsJsonAsync("/api/boards", new { title = "Across instances", nickname = "Ada" }, timeout.Token);
@@ -34,11 +34,11 @@ public sealed class CrossInstanceBroadcastTests
         using var column = await JsonDocument.ParseAsync(await columnResponse.Content.ReadAsStreamAsync(timeout.Token), cancellationToken: timeout.Token);
         var columnId = column.RootElement.GetProperty("id").GetGuid();
 
-        var session = cookies.GetCookies(new Uri("http://localhost:8082"))["cardflow_session"]
+        var session = cookies.GetCookies(new Uri("http://127.0.0.1:8082"))["cardflow_session"]
             ?? throw new InvalidOperationException("Board creation did not set a session cookie.");
         using var socket = new ClientWebSocket();
         socket.Options.SetRequestHeader("Cookie", $"{session.Name}={session.Value}");
-        await socket.ConnectAsync(new Uri("ws://localhost:8081/hubs/board"), timeout.Token);
+        await socket.ConnectAsync(new Uri("ws://127.0.0.1:8081/hubs/board"), timeout.Token);
         var buffer = new StringBuilder();
         await SendAsync(socket, "{\"protocol\":\"json\",\"version\":1}\u001e", timeout.Token);
         using (var handshake = await ReceiveAsync(socket, buffer, timeout.Token))
@@ -83,7 +83,7 @@ public sealed class CrossInstanceBroadcastTests
 
         using var secondSocket = new ClientWebSocket();
         secondSocket.Options.SetRequestHeader("Cookie", $"{session.Name}={session.Value}");
-        await secondSocket.ConnectAsync(new Uri("ws://localhost:8082/hubs/board"), timeout.Token);
+        await secondSocket.ConnectAsync(new Uri("ws://127.0.0.1:8082/hubs/board"), timeout.Token);
         var secondBuffer = new StringBuilder();
         await SendAsync(secondSocket, "{\"protocol\":\"json\",\"version\":1}\u001e", timeout.Token);
         using (var handshake = await ReceiveAsync(secondSocket, secondBuffer, timeout.Token))

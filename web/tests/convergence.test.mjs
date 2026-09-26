@@ -3,8 +3,8 @@ import assert from 'node:assert/strict'
 import { HubConnectionBuilder, HttpTransportType, LogLevel } from '@microsoft/signalr'
 import { applyEvent, cardOrder } from '../src/boardState.ts'
 
-const api1 = 'http://localhost:8081'
-const api2 = 'http://localhost:8082'
+const api1 = 'http://127.0.0.1:8081'
+const api2 = 'http://127.0.0.1:8082'
 
 async function request(base, path, cookie, body) {
   const response = await fetch(`${base}${path}`, {
