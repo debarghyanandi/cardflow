@@ -8,8 +8,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
       - name: Run tests against real Postgres
@@ -27,6 +27,32 @@ jobs:
           instances=$(for i in $(seq 1 12); do curl --fail --silent http://localhost:8080/health; echo; done | jq -r .instance | sort -u)
           printf '%s\n' "$instances"
           test "$(printf '%s\n' "$instances" | tr '\n' ',')" = "api1,api2,"
+      - name: Create and read a board through nginx
+        run: |
+          set -euo pipefail
+          cookie_file=$(mktemp)
+          guest_cookie_file=$(mktemp)
+          trap 'rm -f "$cookie_file" "$guest_cookie_file"' EXIT
+          board=$(curl --fail-with-body --silent --show-error -c "$cookie_file" \
+            -H 'Content-Type: application/json' \
+            -d '{"title":"CI board","nickname":"Ada"}' http://localhost:8080/api/boards)
+          token=$(printf '%s' "$board" | jq -r .token)
+          board_url="http://localhost:8080/api/boards/$token"
+          column=$(curl --fail-with-body --silent --show-error -b "$cookie_file" \
+            -H 'Content-Type: application/json' \
+            -d '{"title":"Doing","previousColumnId":null,"nextColumnId":null}' "$board_url/columns")
+          column_id=$(printf '%s' "$column" | jq -r .id)
+          card=$(curl --fail-with-body --silent --show-error -b "$cookie_file" \
+            -H 'Content-Type: application/json' \
+            -d '{"title":"First","description":"","previousCardId":null,"nextCardId":null}' \
+            "$board_url/columns/$column_id/cards")
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' "$board_url")" = 401
+          curl --fail-with-body --silent --show-error -c "$guest_cookie_file" \
+            -H 'Content-Type: application/json' -d '{"nickname":"Lin"}' "$board_url/join" >/dev/null
+          snapshot=$(curl --fail-with-body --silent --show-error -b "$guest_cookie_file" "$board_url")
+          test "$(printf '%s' "$snapshot" | jq -r '.columns[0].cards[0].title')" = First
+          test "$(printf '%s' "$card" | jq -r .title)" = First
+          test "$(printf '%s' "$snapshot" | jq -r '.members | length')" = 2
       - name: Show container logs on failure
         if: failure()
         run: docker compose logs

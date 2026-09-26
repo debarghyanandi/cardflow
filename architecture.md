@@ -165,7 +165,7 @@ This belongs in the README. A rejected option with a reason reads as judgment; a
 
 ---
 
-## 6. The ordering problem, and how it is solved `[proposed]`
+## 6. The ordering problem, and how it is solved `[decided]`
 
 **This is the heart of the project. Get this right and the rest is ordinary work.**
 
@@ -175,23 +175,23 @@ Give each card a position: 1, 2, 3. To insert between 1 and 2, every card below 
 
 ### Fractional ranks
 
-Each card holds a **rank** — a short string, not a number. Cards sort by that string.
+Each card holds a **rank** — a short binary string, not an integer position. The string represents a fraction between 0 and 1. Generated ranks end in `1`; PostgreSQL sorts them with the `C` collation.
 
 To place a card between two others, generate a string that sorts between their two ranks.
 
 ```
-Between "a"  and "c"  →  "b"
-Between "a"  and "b"  →  "am"
-Between "am" and "b"  →  "an"
+Empty column                 →  "1"    (one half)
+Before "1"                  →  "01"   (one quarter)
+Between "1" and "11"        →  "101"  (five eighths)
 ```
 
-There is always room between any two strings, because you can always add a character. So **an insert writes exactly one row**. Nothing else moves.
+There is always another midpoint between two distinct generated ranks. This guarantee depends on using the canonical binary format; it is false for arbitrary strings. A normal insert therefore writes exactly one card row. Nothing else moves.
 
-This is what Trello and Linear actually do. Trello's version is called LexoRank.
+This is a small fractional-indexing scheme. Trello's LexoRank solves the same ordering problem with a different encoding.
 
 ### The collision, and the tie-break
 
-Two people drop a card into the same gap at the same moment. Both compute a rank between the same neighbours. Both get `"b"`.
+Two people drop a card into the same gap at the same moment. Both compute a rank between the same neighbours. Both can get `"101"`.
 
 That is fine, and it must be handled on purpose: **when two ranks are equal, sort by card id.** The order is then stable and identical everywhere, which is invariant I1. It may not be the order either person expected, but both see the *same* order, and one small drag fixes it.
 
@@ -199,11 +199,11 @@ That is fine, and it must be handled on purpose: **when two ranks are equal, sor
 
 ### Rank exhaustion
 
-Inserting into the same gap over and over makes the strings grow: `"am"`, `"an"`, `"amn"`. In normal use this never matters. A background job renumbers a column when any rank passes 50 characters. Rare, cheap, one line in the README.
+Inserting into the same gap over and over makes the strings grow. A background sweep checks once a minute and redistributes the ranks of a column's cards when any active card rank passes 50 characters. It does the same for column ranks on a board. The sweep preserves the existing order and retries if a concurrent write conflicts.
 
-### Card content — last write wins, and the user is told
+### Card content — stale writes are rejected, and the user is told
 
-Two people rename the same card. The last write to reach the server wins. Each card carries a `version` that goes up on every change.
+Two people rename the same card. The first valid write advances the card's `version`. A write based on the old version is rejected, so it cannot silently replace the accepted text.
 
 - The client sends the version it was looking at.
 - If the server's version is higher, the write is **rejected**, not merged.
@@ -408,6 +408,12 @@ The whole environment is created and destroyed by one GitHub Actions workflow. I
 **D8 — No state lives only in the cloud.** `[decided]` 2026-09-26
 Destroying the stack destroys the database. Boards are demo data, not something to protect. *Why:* if teardown risked losing something real, nobody would ever tear it down. This is a design choice that makes D7 possible.
 
+**D9 — Canonical binary fractional ranks.** `[decided]` 2026-09-26
+The rank strings use only `0` and `1` and end in `1`. PostgreSQL uses `C` collation for them. A midpoint always exists between two distinct generated ranks. *Why:* the original claim about arbitrary strings was false for prefix-adjacent values such as `"a"` and `"a0"`.
+
+**D10 — First valid card edit wins.** `[decided]` 2026-09-26
+D4's heading said “last write wins,” but its version-check rule rejects a stale second write. The version-check rule is the intended behavior. *Why:* it tells the losing editor about the conflict instead of silently overwriting the accepted edit.
+
 ---
 
 ## 12. Open questions
@@ -418,7 +424,7 @@ Destroying the stack destroys the database. Boards are demo data, not something 
 
 **Q3 — What happens when the last person leaves a board?** Nothing, or archive after 30 days? Hosting has limits.
 
-**Q4 — Rank renumbering trigger.** A background job, or inline when a rank gets too long? Inline is simpler and puts a slow path inside a hot operation.
+**Q4 — Rank renumbering trigger.** `[decided]` A background sweep runs once a minute and redistributes ranks when one exceeds 50 characters. This keeps the slow path out of a normal insert.
 
 **Q5 — Abuse.** The board is open to anyone with the link. Rate limit per connection, and a board size cap. What are the numbers?
 
