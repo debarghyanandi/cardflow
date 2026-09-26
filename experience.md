@@ -1,6 +1,6 @@
 # Cardflow engineering experience
 
-Last updated: 2026-09-27, after the passing hosted Phase 4 run.
+Last updated: 2026-09-27, after local verification of the structure refactor.
 
 This is a living account of how we built Cardflow, what we actually ran, and how we diagnosed mistakes. It complements [`architecture.md`](architecture.md), which describes the intended system, and [`codex-prompt.md`](codex-prompt.md), which defines the phase gates. Add to this file whenever a later phase changes the design, exposes a failure, or gains new verification. Do not rewrite a failed attempt as if it never happened.
 
@@ -11,19 +11,22 @@ This is a living account of how we built Cardflow, what we actually ran, and how
 - Run the app and tests before claiming success. A local pass is not a GitHub Actions pass.
 - Commit logical units. Red tests and real mistakes may appear in history, but leave the phase in a passing state.
 - Ask the user for manual work such as `git push` and cloud setup. The user puts long logs in the ignored `temp-ref/` directory.
-- Phases 0–4 have passing GitHub Actions runs. Phase 4 (presence) was verified locally and on the pushed commit `5ca6544`. Phase 5 has not started.
+- Phases 0–4 have passing GitHub Actions runs. Phase 4 (presence) was verified locally and on the pushed commit `5ca6544`. Phase 5 visual-direction exploration began, but implementation is paused at the user's request.
 
-The only untracked file currently visible outside this document is `src/Cardflow.Api/Properties/launchSettings.json`; it belongs to the local environment and has deliberately not been staged.
+The refactor now tracks `src/Cardflow.Api/Properties/launchSettings.json`. It contains development URLs and environment settings, not secrets. The working tree was clean before this verification.
 
 ## Where the pieces are
 
 | Concern | Main location | Why it is there |
 |---|---|---|
 | Browser app | `web/src/App.tsx`, `web/src/boardState.ts` | React view and pure event/rollback rules |
-| HTTP endpoints | `src/Cardflow.Api/Program.cs` | ASP.NET Core Minimal APIs; there is no controller class |
-| Board rules | `src/Cardflow.Api/Boards/BoardService.cs` and `BoardCommandService.cs` | Both REST and SignalR use the same business logic |
+| HTTP endpoints | `src/Cardflow.Api/Controllers/` | Board, column, and card controllers handle REST requests |
+| Startup and wiring | `src/Cardflow.Api/Program.cs`, `Extensions/` | `Program.cs` delegates service registration and middleware setup |
+| Board rules | `src/Cardflow.Api/Services/` | Controllers and SignalR use the same business logic |
+| Request/response shapes | `src/Cardflow.Api/Contracts/` | API contracts are separate from persistence entities |
 | Real-time entry | `src/Cardflow.Api/Realtime/BoardHub.cs` | Thin hub: authorize/join, call a service, broadcast |
-| Persistence | `src/Cardflow.Api/Data/` | EF Core model and PostgreSQL migrations |
+| Presence | `src/Cardflow.Api/Providers/BoardPresenceProvider.cs`, `BackgroundServices/PresenceSweep.cs` | Redis-backed live state and orphan cleanup |
+| Persistence | `src/Cardflow.Api/Data/` | EF Core entities, model, and PostgreSQL migrations |
 | Local stack | `compose.yaml`, `infra/nginx/default.conf` | PostgreSQL, Redis, two APIs, nginx |
 | CI | `.github/workflows/ci.yml` | Build, database, two-instance, convergence, and browser checks |
 
@@ -154,6 +157,14 @@ The user initially started Phase 5 on 2026-09-27. We read its scope before editi
 The user then explicitly paused Phase 5 to invite a graphic designer friend to design the experience first. We stopped the visual implementation and prepared `design-handoff/`: a plain-language brief, user journeys, a screen/state checklist, two verified YouTube references (Trello board basics and Figma live collaboration), and five PNGs captured from a fresh sample board. The screenshots were checked visually and labelled as current behaviour, not a design direction. No actual user board or invitation link was included. The friend can return wireframes or Figma designs; we will resume Phase 5 only when the user asks. At the user's request, we consolidated the brief into a single offline `design-handoff/index.html` and removed the Markdown copies from that handoff folder. The first offline browser check found the gallery images had not loaded yet because they were marked lazy; removing lazy loading made all five images load reliably. A second check confirmed all images and internal navigation links, with no horizontal overflow at desktop or phone width. The user does not want this handoff pushed to Git. `launchSettings.json` remains untouched.
 
 After confirming that they had a backup, the user asked us to remove the handoff from the repository. We verified the exact paths and deleted only `design-handoff/` and `design-handoff.zip`. Both are absent from the workspace now; recovery depends on the user's backup because these untracked copies were not committed. Phase 5 remains paused.
+
+## Structure refactor and local verification (2026-09-27)
+
+The user reorganized the API and asked us to understand and test it without starting Phase 5. The refactor was implemented in `071cc9c` and merged at `a1d29fc`. `Program.cs` is now a small entry point: extension methods register services and configure the pipeline. REST routes live in `BoardsController`, `ColumnsController`, and `CardsController`; API shapes live in `Contracts/`; persistence entities live in `Data/Entities/`; board logic lives in `Services/`. Redis presence moved to `Providers/`, its sweep to `BackgroundServices/`, and the test layout mirrors these concerns. The controllers call the existing services, and `BoardHub` continues to use those services for real-time operations. This is primarily an organization change, not a new phase or a new UI.
+
+The first Release solution test run compiled, but 16 of 20 tests could not reach Docker's Windows named pipe from the sandbox (`UnauthorizedAccessException`). That result did not establish a code failure. With Docker permission, the same container-backed suite passed 20/20. We rebuilt and started the full Compose stack and confirmed both direct APIs and nginx returned HTTP 200 from `/health`. The separate two-instance SignalR test passed 1/1, and the 20-client/200-operation convergence run passed. In `web/`, the production build passed, all three state tests passed, and all three Playwright browser tests passed against the rebuilt stack: live presence/cursor/editing and tab close, drag rollback, and reconnect replay. On this Windows machine, we again started Vite separately and let Playwright reuse it so the test process exited cleanly.
+
+No application defect appeared in these checks, so no app code was changed. This is **local** verification of the refactor, not a hosted CI result for `a1d29fc`. The Compose stack and Vite development server were left running for inspection at `http://127.0.0.1:5173`. Phase 5 remains paused.
 
 ## Next update rule
 
