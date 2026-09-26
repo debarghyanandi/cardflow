@@ -240,7 +240,7 @@ Each event gets a `seq` — a number that only goes up, per board.
 - On reconnect it asks for everything after its last `seq`.
 - If it is more than 500 events behind, the server sends a fresh snapshot instead. Cheaper than replaying, and simpler than being clever about it.
 
-**Events are pruned** by an hourly sweep after 7 days or beyond the newest 5,000 rows per board, whichever comes first. They are a catch-up buffer, not an audit log.
+**Events are pruned** by a minute-by-minute sweep after 7 days or beyond the newest 5,000 rows per board, whichever comes first. They are a catch-up buffer, not an audit log.
 
 ### Indexes that will matter
 
@@ -367,8 +367,8 @@ Record and publish:
 | Frontend | **React + TypeScript**, Vite | `[decided]` | |
 | Drag and drop | **dnd-kit** | `[proposed]` | Accessible, maintained |
 | Server state | **TanStack Query** | `[proposed]` | REST load only. Live state comes from the hub |
-| Client state | **Zustand** | `[proposed]` | Small. Redux is too much ceremony for one board |
-| Styling | **Tailwind** | `[proposed]` | Portfolio project — it has to look good, fast |
+| Client state | **React state + pure board projector** | `[decided]` | One board model; replay and rollback can be tested without a browser |
+| Styling | **Plain CSS for Phase 3** | `[decided]` | Keep the real-time work focused; revisit the visual system in Phase 5 |
 | Identity | Anonymous session cookie + nickname | `[decided]` | No signup wall. §4 |
 | Tests | xUnit · Testcontainers · one Playwright end-to-end run | `[proposed]` | |
 | Load test | k6 | `[open]` | Crank is the .NET alternative |
@@ -422,6 +422,10 @@ The browser client uses WebSockets with negotiation skipped, and the hub endpoin
 **D12 — The server computes rank from neighbour IDs.** `[decided]` 2026-09-26
 
 The browser immediately changes the visible order, then sends the IDs beside the card's proposed position. The server computes the canonical fractional rank. *Why:* the browser does not need a second rank implementation, and rejection can restore the untouched confirmed state.
+
+**D13 — React state before another state library.** `[decided]` 2026-09-26
+
+One board has one confirmed snapshot plus at most one pending move. A pure projector and React state cover this without Zustand. *Why:* the replay and rollback rules remain easy to test directly, and another dependency adds no useful behavior yet.
 
 ---
 

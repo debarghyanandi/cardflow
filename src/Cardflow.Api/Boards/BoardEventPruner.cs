@@ -7,7 +7,7 @@ public sealed class BoardEventPruner(IServiceScopeFactory scopes, ILogger<BoardE
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        using var timer = new PeriodicTimer(TimeSpan.FromHours(1));
+        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
             try
@@ -17,7 +17,7 @@ public sealed class BoardEventPruner(IServiceScopeFactory scopes, ILogger<BoardE
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                logger.LogError(exception, "Board event pruning failed; retrying next hour");
+                logger.LogError(exception, "Board event pruning failed; retrying next minute");
             }
         }
     }

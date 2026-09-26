@@ -5,3 +5,7 @@
 .env.*
 !.env.example
 temp-ref/
+web/node_modules/
+web/dist/
+web/test-results/
+web/*.tsbuildinfo

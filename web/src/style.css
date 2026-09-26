@@ -1,0 +1,46 @@
+:root { font-family: 'Segoe UI', Arial, sans-serif; color: #223331; background: #f5f7f2; font-synthesis: none; }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; }
+button, input { font: inherit; }
+button { cursor: pointer; }
+.brand { font: 800 1.45rem 'Segoe UI', sans-serif; letter-spacing: -.07em; color: #214d43; }
+.brand span { color: #8bc345; margin-left: .1em; }
+.welcome { width: min(440px, calc(100% - 40px)); margin: 9vh auto; }
+.welcome h1 { font: 800 clamp(2.4rem, 5vw, 3.5rem)/1.08 'Segoe UI', sans-serif; letter-spacing: -.06em; margin: 58px 0 18px; }
+.welcome p { color: #63736e; line-height: 1.6; }
+.welcome form { display: grid; gap: 20px; margin-top: 42px; padding: 28px; background: #fff; border: 1px solid #e5eae2; border-radius: 20px; box-shadow: 0 12px 40px #1a34280a; }
+.welcome label { display: grid; gap: 8px; font-weight: 700; font-size: .82rem; }
+input { width: 100%; border: 1px solid #dce5dd; background: #fff; border-radius: 10px; padding: 12px 14px; outline: none; }
+input:focus { border-color: #69a78d; box-shadow: 0 0 0 3px #69a78d30; }
+.welcome button { border: 0; border-radius: 10px; background: #255a4a; color: white; padding: 14px 18px; text-align: left; font-weight: 700; display: flex; justify-content: space-between; }
+.welcome button:hover { background: #1b473a; }
+.welcome .hint { margin-top: 30px; text-align: center; font-size: .85rem; }
+.error { color: #a83535 !important; margin: 0; }
+.loading { padding: 60px; color: #63736e; }
+.workspace { min-height: 100vh; }
+.topbar { height: 88px; padding: 0 36px; border-bottom: 1px solid #e3e9df; display: flex; align-items: center; gap: 42px; background: #fff; }
+.board-title { border-left: 1px solid #e3e9df; padding-left: 32px; }
+.board-title small { font-size: .65rem; font-weight: 800; letter-spacing: .16em; color: #8b9a91; }
+.board-title h1 { font: 800 1.1rem 'Segoe UI', sans-serif; margin: 2px 0 0; }
+.top-actions { margin-left: auto; display: flex; align-items: center; gap: 20px; font-size: .82rem; font-weight: 700; }
+.online { color: #2b8c63; }.offline { color: #ad753b; }
+.share { border: 1px solid #d8e3d9; border-radius: 8px; padding: 9px 13px; background: #fff; color: #255a4a; font-weight: 700; }
+.notice { margin: 20px 36px 0; padding: 12px 16px; border: 1px solid #efdda9; background: #fff7df; color: #795f1d; border-radius: 9px; font-size: .85rem; }
+.board-meta { display: flex; gap: 12px; padding: 32px 38px 18px; color: #7d8e85; font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+.columns { display: flex; align-items: flex-start; gap: 18px; overflow-x: auto; padding: 0 36px 42px; min-height: calc(100vh - 160px); }
+.column { flex: 0 0 300px; min-height: 180px; padding: 16px; border: 1px solid #e4e9e0; border-radius: 15px; background: #edf1e9; transition: border-color .15s; }
+.column-over { border-color: #66a98b; }
+.column header { display: flex; justify-content: space-between; align-items: center; padding: 0 3px 15px; }
+.column h2 { font: 800 .92rem 'Segoe UI', sans-serif; margin: 0; }
+.column header span { color: #7e9085; font-size: .76rem; font-weight: 800; }
+.card-list { display: grid; gap: 9px; min-height: 10px; }
+.card { display: flex; gap: 11px; align-items: flex-start; background: #fff; border: 1px solid #e4eae2; border-radius: 10px; padding: 15px 13px; min-height: 54px; box-shadow: 0 3px 8px #16362a08; font-size: .88rem; font-weight: 600; touch-action: none; }
+.card.dragging { opacity: .6; box-shadow: 0 14px 25px #16362a20; z-index: 10; }
+.card-grip { color: #b1bdb4; font-size: 1.1rem; line-height: 1; }
+.add-card { display: flex; gap: 5px; margin-top: 12px; }
+.add-card input { border: 0; background: transparent; padding: 9px 5px; font-size: .82rem; }
+.add-card input:focus { background: #fff; }
+.add-card button { border: 0; background: transparent; color: #5d8e77; font-size: 1.2rem; font-weight: 700; }
+.new-column { flex: 0 0 270px; padding: 14px; background: #e8eee7; border: 1px dashed #c9d8ca; border-radius: 14px; display: grid; gap: 10px; }
+.new-column button { border: 0; background: #dce9dd; color: #255a4a; border-radius: 8px; padding: 10px; font-weight: 700; }
+@media (max-width: 640px) { .topbar { padding: 0 18px; gap: 18px; }.board-title { padding-left: 18px; }.board-meta { padding-left: 18px; }.columns { padding-left: 18px; }.share { display: none; } }

@@ -30,7 +30,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       CARDFLOW_INSTANCE: api1
-      ConnectionStrings__Postgres: Host=postgres;Database=cardflow;Username=cardflow;Password=${CARDFLOW_POSTGRES_PASSWORD:-cardflow_local_only}
+      ConnectionStrings__Postgres: Host=postgres;Database=cardflow;Username=cardflow;Password=${CARDFLOW_POSTGRES_PASSWORD:-cardflow_local_only};Maximum Pool Size=20
       ConnectionStrings__Redis: redis:6379
     depends_on:
       postgres:
@@ -47,7 +47,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       CARDFLOW_INSTANCE: api2
-      ConnectionStrings__Postgres: Host=postgres;Database=cardflow;Username=cardflow;Password=${CARDFLOW_POSTGRES_PASSWORD:-cardflow_local_only}
+      ConnectionStrings__Postgres: Host=postgres;Database=cardflow;Username=cardflow;Password=${CARDFLOW_POSTGRES_PASSWORD:-cardflow_local_only};Maximum Pool Size=20
       ConnectionStrings__Redis: redis:6379
     depends_on:
       postgres:
