@@ -8,6 +8,7 @@ public sealed class CardflowDbContext(DbContextOptions<CardflowDbContext> option
     public DbSet<BoardMember> BoardMembers => Set<BoardMember>();
     public DbSet<BoardColumn> Columns => Set<BoardColumn>();
     public DbSet<Card> Cards => Set<Card>();
+    public DbSet<BoardEvent> BoardEvents => Set<BoardEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -19,6 +20,7 @@ public sealed class CardflowDbContext(DbContextOptions<CardflowDbContext> option
             entity.Property(board => board.Title).HasColumnName("title").HasMaxLength(120).IsRequired();
             entity.Property(board => board.JoinToken).HasColumnName("join_token").HasMaxLength(64).IsRequired();
             entity.Property(board => board.CreatedAt).HasColumnName("created_at");
+            entity.Property(board => board.EventSeq).HasColumnName("event_seq");
             entity.HasIndex(board => board.JoinToken).IsUnique();
         });
 
@@ -61,6 +63,20 @@ public sealed class CardflowDbContext(DbContextOptions<CardflowDbContext> option
             entity.Property(card => card.IsArchived).HasColumnName("is_archived");
             entity.HasOne<BoardColumn>().WithMany().HasForeignKey(card => card.ColumnId).OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(card => new { card.ColumnId, card.Rank, card.Id });
+        });
+
+        modelBuilder.Entity<BoardEvent>(entity =>
+        {
+            entity.ToTable("board_events");
+            entity.HasKey(boardEvent => new { boardEvent.BoardId, boardEvent.Seq });
+            entity.Property(boardEvent => boardEvent.BoardId).HasColumnName("board_id");
+            entity.Property(boardEvent => boardEvent.Seq).HasColumnName("seq");
+            entity.Property(boardEvent => boardEvent.Type).HasColumnName("type").HasMaxLength(60).IsRequired();
+            entity.Property(boardEvent => boardEvent.Payload).HasColumnName("payload").HasColumnType("jsonb").IsRequired();
+            entity.Property(boardEvent => boardEvent.ActorMemberId).HasColumnName("actor_member_id");
+            entity.Property(boardEvent => boardEvent.CreatedAt).HasColumnName("created_at");
+            entity.HasOne<Board>().WithMany().HasForeignKey(boardEvent => boardEvent.BoardId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<BoardMember>().WithMany().HasForeignKey(boardEvent => boardEvent.ActorMemberId).OnDelete(DeleteBehavior.SetNull);
         });
     }
 }

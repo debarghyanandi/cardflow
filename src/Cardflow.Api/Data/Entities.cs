@@ -6,6 +6,7 @@ public sealed class Board
     public string Title { get; set; } = "";
     public string JoinToken { get; set; } = "";
     public DateTime CreatedAt { get; set; }
+    public long EventSeq { get; set; }
 }
 
 public sealed class BoardMember
@@ -35,4 +36,14 @@ public sealed class Card
     public string Rank { get; set; } = "";
     public long Version { get; set; }
     public bool IsArchived { get; set; }
+}
+
+public sealed class BoardEvent
+{
+    public Guid BoardId { get; set; }
+    public long Seq { get; set; }
+    public string Type { get; set; } = "";
+    public string Payload { get; set; } = "{}";
+    public Guid? ActorMemberId { get; set; }
+    public DateTime CreatedAt { get; set; }
 }
