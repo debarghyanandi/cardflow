@@ -30,14 +30,21 @@ jobs:
       - name: Check nginx and both API instances
         run: |
           set -euo pipefail
+          test "$(curl --fail --silent http://localhost:8081/health | jq -r .instance)" = api1
+          test "$(curl --fail --silent http://localhost:8082/health | jq -r .instance)" = api2
+          seen_api1=0
+          seen_api2=0
           for attempt in $(seq 1 30); do
-            if curl --fail --silent http://localhost:8080/health >/dev/null; then break; fi
-            sleep 2
+            for sample in $(seq 1 4); do
+              instance=$(curl --fail --silent http://localhost:8080/health | jq -r '.instance // empty' || true)
+              if [ "$instance" = api1 ]; then seen_api1=1; fi
+              if [ "$instance" = api2 ]; then seen_api2=1; fi
+            done
+            if [ "$seen_api1" = 1 ] && [ "$seen_api2" = 1 ]; then break; fi
+            sleep 1
           done
-          curl --fail --silent http://localhost:8080/health
-          instances=$(for i in $(seq 1 12); do curl --fail --silent http://localhost:8080/health; echo; done | jq -r .instance | sort -u)
-          printf '%s\n' "$instances"
-          test "$(printf '%s\n' "$instances" | tr '\n' ',')" = "api1,api2,"
+          test "$seen_api1" = 1
+          test "$seen_api2" = 1
       - name: Create and read a board through nginx
         run: |
           set -euo pipefail
