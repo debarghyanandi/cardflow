@@ -14,6 +14,7 @@ builder.Services.AddScoped<BoardCommandService>();
 builder.Services.AddScoped<BoardSyncService>();
 builder.Services.AddSingleton<BoardEventPublisher>();
 builder.Services.AddHostedService<RankMaintenance>();
+builder.Services.AddHostedService<BoardEventPruner>();
 builder.Services.AddSignalR().AddStackExchangeRedis(
     builder.Configuration.GetConnectionString("Redis")
     ?? throw new InvalidOperationException("A Redis connection string is required."));

@@ -240,7 +240,7 @@ Each event gets a `seq` — a number that only goes up, per board.
 - On reconnect it asks for everything after its last `seq`.
 - If it is more than 500 events behind, the server sends a fresh snapshot instead. Cheaper than replaying, and simpler than being clever about it.
 
-**Events are pruned** after 7 days or 5,000 rows per board, whichever comes first. They are a catch-up buffer, not an audit log.
+**Events are pruned** by an hourly sweep after 7 days or beyond the newest 5,000 rows per board, whichever comes first. They are a catch-up buffer, not an audit log.
 
 ### Indexes that will matter
 
@@ -258,8 +258,9 @@ Each event gets a `seq` — a number that only goes up, per board.
 GET /api/boards/{token}
    → snapshot: columns + cards + members + current seq
    → client renders
-   → client opens the SignalR connection, sends its seq
-   → server sends any events that happened in between
+   → client opens the SignalR connection and joins the board group
+   → client calls CatchUp with its seq; server sends missed events or a snapshot
+   → live events received during catch-up are buffered and applied in seq order
 ```
 
 **The gap between the snapshot and the socket opening is real.** Something can change in those 200 milliseconds. That is why the client sends its `seq` on connect and the server fills the hole. Skip this and the board is subtly wrong, and nobody notices until the demo.
@@ -268,8 +269,8 @@ GET /api/boards/{token}
 
 ```
 User drags
-   → client computes the new rank locally and moves the card on screen NOW
-   → sends MoveCard { cardId, newColumnId, newRank, version }
+   → client moves the card on screen NOW, keeping the confirmed state for rollback
+   → sends MoveCard { cardId, newColumnId, previousCardId, nextCardId, version }
         │
         ▼
    server: check membership (I3) → check version → write card + event in ONE transaction
@@ -416,7 +417,11 @@ D4's heading said “last write wins,” but its version-check rule rejects a st
 
 **D11 — WebSockets-only SignalR connections.** `[decided]` 2026-09-26
 
-The browser client will use WebSockets with negotiation skipped, and the hub endpoint disallows fallback transports. *Why:* this makes the no-sticky-sessions claim true when using the Redis backplane. If fallback transports become necessary, add session affinity and revise that claim.
+The browser client uses WebSockets with negotiation skipped, and the hub endpoint disallows fallback transports. *Why:* this makes the no-sticky-sessions claim true when using the Redis backplane. If fallback transports become necessary, add session affinity and revise that claim.
+
+**D12 — The server computes rank from neighbour IDs.** `[decided]` 2026-09-26
+
+The browser immediately changes the visible order, then sends the IDs beside the card's proposed position. The server computes the canonical fractional rank. *Why:* the browser does not need a second rank implementation, and rejection can restore the untouched confirmed state.
 
 ---
 
