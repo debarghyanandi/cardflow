@@ -1,11 +1,13 @@
 using System.Data;
+using Cardflow.Api.Boards;
 using Cardflow.Api.Data;
+using Cardflow.Api.Realtime;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
 namespace Cardflow.Api.Ordering;
 
-public sealed class RankMaintenance(IServiceScopeFactory scopes, ILogger<RankMaintenance> logger) : BackgroundService
+public sealed class RankMaintenance(IServiceScopeFactory scopes, BoardEventPublisher publisher, ILogger<RankMaintenance> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -27,6 +29,7 @@ public sealed class RankMaintenance(IServiceScopeFactory scopes, ILogger<RankMai
     {
         await using var scope = scopes.CreateAsyncScope();
         var database = scope.ServiceProvider.GetRequiredService<CardflowDbContext>();
+        var events = scope.ServiceProvider.GetRequiredService<BoardEventStore>();
         var crowdedColumns = await database.Cards.AsNoTracking()
             .Where(card => !card.IsArchived && card.Rank.Length > 50)
             .Select(card => card.ColumnId).Distinct().ToListAsync(cancellationToken);
@@ -35,7 +38,9 @@ public sealed class RankMaintenance(IServiceScopeFactory scopes, ILogger<RankMai
         {
             try
             {
-                await RebalanceColumnAsync(database, columnId, cancellationToken);
+                var boardEvent = await RebalanceColumnAsync(database, events, columnId, cancellationToken);
+                if (boardEvent is not null)
+                    await publisher.PublishAsync(boardEvent);
             }
             catch (Exception exception) when (IsWriteConflict(exception))
             {
@@ -51,7 +56,9 @@ public sealed class RankMaintenance(IServiceScopeFactory scopes, ILogger<RankMai
         {
             try
             {
-                await RebalanceBoardColumnsAsync(database, boardId, cancellationToken);
+                var boardEvent = await RebalanceBoardColumnsAsync(database, events, boardId, cancellationToken);
+                if (boardEvent is not null)
+                    await publisher.PublishAsync(boardEvent);
             }
             catch (Exception exception) when (IsWriteConflict(exception))
             {
@@ -65,9 +72,12 @@ public sealed class RankMaintenance(IServiceScopeFactory scopes, ILogger<RankMai
         exception is DbUpdateConcurrencyException or PostgresException { SqlState: "40001" } ||
         exception is DbUpdateException { InnerException: PostgresException { SqlState: "40001" } };
 
-    public static async Task RebalanceColumnAsync(CardflowDbContext database, Guid columnId, CancellationToken cancellationToken)
+    public static async Task<BoardEventMessage?> RebalanceColumnAsync(
+        CardflowDbContext database, BoardEventStore events, Guid columnId, CancellationToken cancellationToken)
     {
         await using var transaction = await database.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        var boardId = await database.Columns.Where(column => column.Id == columnId)
+            .Select(column => column.BoardId).SingleAsync(cancellationToken);
         var cards = await database.Cards
             .Where(card => card.ColumnId == columnId && !card.IsArchived)
             .OrderBy(card => card.Rank).ThenBy(card => card.Id)
@@ -75,7 +85,7 @@ public sealed class RankMaintenance(IServiceScopeFactory scopes, ILogger<RankMai
         if (cards.All(card => card.Rank.Length <= 50))
         {
             await transaction.CommitAsync(cancellationToken);
-            return;
+            return null;
         }
 
         var ranks = FractionalRank.Spread(cards.Count);
@@ -86,10 +96,14 @@ public sealed class RankMaintenance(IServiceScopeFactory scopes, ILogger<RankMai
         }
 
         await database.SaveChangesAsync(cancellationToken);
+        var boardEvent = await events.AppendAsync(boardId, null, "CardsRebalanced",
+            new { cards = cards.Select(card => new { card.Id, card.Rank, card.Version }) }, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        return boardEvent;
     }
 
-    public static async Task RebalanceBoardColumnsAsync(CardflowDbContext database, Guid boardId, CancellationToken cancellationToken)
+    public static async Task<BoardEventMessage?> RebalanceBoardColumnsAsync(
+        CardflowDbContext database, BoardEventStore events, Guid boardId, CancellationToken cancellationToken)
     {
         await using var transaction = await database.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         var columns = await database.Columns
@@ -99,7 +113,7 @@ public sealed class RankMaintenance(IServiceScopeFactory scopes, ILogger<RankMai
         if (columns.All(column => column.Rank.Length <= 50))
         {
             await transaction.CommitAsync(cancellationToken);
-            return;
+            return null;
         }
 
         var ranks = FractionalRank.Spread(columns.Count);
@@ -109,6 +123,9 @@ public sealed class RankMaintenance(IServiceScopeFactory scopes, ILogger<RankMai
         }
 
         await database.SaveChangesAsync(cancellationToken);
+        var boardEvent = await events.AppendAsync(boardId, null, "ColumnsRebalanced",
+            new { columns = columns.Select(column => new { column.Id, column.Rank }) }, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        return boardEvent;
     }
 }

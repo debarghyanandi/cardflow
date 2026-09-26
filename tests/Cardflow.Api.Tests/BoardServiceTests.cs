@@ -170,12 +170,13 @@ public sealed class BoardServiceTests(BoardDatabase fixture) : IClassFixture<Boa
         await database.SaveChangesAsync();
         Assert.Equal(1, await database.Cards.CountAsync(card => card.Rank.Length > 50 && card.ColumnId == column.Id));
 
-        await RankMaintenance.RebalanceColumnAsync(database, column.Id, default);
+        var boardEvent = await RankMaintenance.RebalanceColumnAsync(database, new BoardEventStore(database), column.Id, default);
         var snapshot = await service.SnapshotAsync(board.Token, session, default);
 
         Assert.Equal([first.Id, second.Id], snapshot.Columns.Single().Cards.Select(card => card.Id));
         Assert.All(snapshot.Columns.Single().Cards, card => Assert.True(card.Rank.Length < 50));
         Assert.All(snapshot.Columns.Single().Cards, card => Assert.Equal(2, card.Version));
+        Assert.Equal("CardsRebalanced", boardEvent?.Type);
     }
 
     [Fact]
@@ -198,10 +199,11 @@ public sealed class BoardServiceTests(BoardDatabase fixture) : IClassFixture<Boa
         await database.SaveChangesAsync();
         Assert.Equal(1, await database.Columns.CountAsync(candidate => candidate.Rank.Length > 50 && candidate.BoardId == board.Id));
 
-        await RankMaintenance.RebalanceBoardColumnsAsync(database, board.Id, default);
+        var boardEvent = await RankMaintenance.RebalanceBoardColumnsAsync(database, new BoardEventStore(database), board.Id, default);
         var snapshot = await service.SnapshotAsync(board.Token, session, default);
 
         Assert.Equal([first.Id, second.Id], snapshot.Columns.Select(column => column.Id));
         Assert.All(snapshot.Columns, column => Assert.True(column.Rank.Length < 50));
+        Assert.Equal("ColumnsRebalanced", boardEvent?.Type);
     }
 }
