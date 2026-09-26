@@ -14,7 +14,7 @@ public sealed record BoardCreated(Guid Id, string Token, string Title);
 public sealed record MemberView(Guid Id, string Nickname, string Colour);
 public sealed record CardView(Guid Id, Guid ColumnId, string Title, string Description, string Rank, long Version);
 public sealed record ColumnView(Guid Id, string Title, string Rank, IReadOnlyList<CardView> Cards);
-public sealed record BoardSnapshot(Guid Id, string Title, string Token, IReadOnlyList<ColumnView> Columns, IReadOnlyList<MemberView> Members);
+public sealed record BoardSnapshot(Guid Id, string Title, string Token, IReadOnlyList<ColumnView> Columns, IReadOnlyList<MemberView> Members, long Seq);
 
 public sealed class BoardProblem(int statusCode, string message) : Exception(message)
 {

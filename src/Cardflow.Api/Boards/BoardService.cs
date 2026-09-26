@@ -3,6 +3,7 @@ using System.Data;
 using Cardflow.Api.Data;
 using Cardflow.Api.Ordering;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace Cardflow.Api.Boards;
 
@@ -51,28 +52,47 @@ public sealed class BoardService(CardflowDbContext database)
 
     public async Task<BoardSnapshot> SnapshotAsync(string token, string session, CancellationToken cancellationToken)
     {
-        await using var transaction = await database.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
-        var board = await AuthorizeAsync(token, session, cancellationToken);
-        var columns = await database.Columns.AsNoTracking()
-            .Where(column => column.BoardId == board.Id && !column.IsArchived)
-            .OrderBy(column => column.Rank).ThenBy(column => column.Id)
-            .ToListAsync(cancellationToken);
-        var columnIds = columns.Select(column => column.Id).ToArray();
-        var cards = await database.Cards.AsNoTracking()
-            .Where(card => columnIds.Contains(card.ColumnId) && !card.IsArchived)
-            .OrderBy(card => card.Rank).ThenBy(card => card.Id)
-            .ToListAsync(cancellationToken);
-        var members = await database.BoardMembers.AsNoTracking()
-            .Where(member => member.BoardId == board.Id)
-            .OrderBy(member => member.Id)
-            .Select(member => new MemberView(member.Id, member.Nickname, member.Colour))
-            .ToListAsync(cancellationToken);
+        IDbContextTransaction? transaction = null;
+        if (database.Database.CurrentTransaction is null)
+        {
+            transaction = await database.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
+        }
 
-        var snapshot = new BoardSnapshot(board.Id, board.Title, board.JoinToken,
-            columns.Select(column => new ColumnView(column.Id, column.Title, column.Rank,
-                cards.Where(card => card.ColumnId == column.Id).Select(Card).ToArray())).ToArray(), members);
-        await transaction.CommitAsync(cancellationToken);
-        return snapshot;
+        try
+        {
+            var board = await AuthorizeAsync(token, session, cancellationToken);
+            var columns = await database.Columns.AsNoTracking()
+                .Where(column => column.BoardId == board.Id && !column.IsArchived)
+                .OrderBy(column => column.Rank).ThenBy(column => column.Id)
+                .ToListAsync(cancellationToken);
+            var columnIds = columns.Select(column => column.Id).ToArray();
+            var cards = await database.Cards.AsNoTracking()
+                .Where(card => columnIds.Contains(card.ColumnId) && !card.IsArchived)
+                .OrderBy(card => card.Rank).ThenBy(card => card.Id)
+                .ToListAsync(cancellationToken);
+            var members = await database.BoardMembers.AsNoTracking()
+                .Where(member => member.BoardId == board.Id)
+                .OrderBy(member => member.Id)
+                .Select(member => new MemberView(member.Id, member.Nickname, member.Colour))
+                .ToListAsync(cancellationToken);
+
+            var snapshot = new BoardSnapshot(board.Id, board.Title, board.JoinToken,
+                columns.Select(column => new ColumnView(column.Id, column.Title, column.Rank,
+                    cards.Where(card => card.ColumnId == column.Id).Select(Card).ToArray())).ToArray(), members, board.EventSeq);
+            if (transaction is not null)
+            {
+                await transaction.CommitAsync(cancellationToken);
+            }
+
+            return snapshot;
+        }
+        finally
+        {
+            if (transaction is not null)
+            {
+                await transaction.DisposeAsync();
+            }
+        }
     }
 
     public async Task<BoardSnapshot> RenameBoardAsync(string token, string session, RenameBoardRequest request, CancellationToken cancellationToken)
