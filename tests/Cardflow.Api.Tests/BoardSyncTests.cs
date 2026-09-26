@@ -44,7 +44,8 @@ public sealed class BoardSyncTests(BoardDatabase fixture) : IClassFixture<BoardD
             UPDATE boards SET event_seq = 602 WHERE id = {board.Value.Id};
             """);
 
-        var sync = await new BoardSyncService(database, boardService)
+        await using var reconnectDatabase = new CardflowDbContext(fixture.Options);
+        var sync = await new BoardSyncService(reconnectDatabase, new BoardService(reconnectDatabase))
             .CatchUpAsync(board.Value.Token, session, board.Event.Seq, default);
 
         Assert.NotNull(sync.Snapshot);

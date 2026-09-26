@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.SignalR;
 
 namespace Cardflow.Api.Realtime;
 
-public sealed class BoardHub(BoardService boards, BoardCommandService commands, BoardEventPublisher publisher) : Hub
+public sealed class BoardHub(BoardService boards, BoardSyncService sync, BoardCommandService commands, BoardEventPublisher publisher) : Hub
 {
     public static string GroupName(Guid boardId) => $"board:{boardId:N}";
 
@@ -13,6 +13,9 @@ public sealed class BoardHub(BoardService boards, BoardCommandService commands, 
         await Groups.AddToGroupAsync(Context.ConnectionId, GroupName(snapshot.Id), Context.ConnectionAborted);
         return snapshot;
     }
+
+    public Task<BoardSync> CatchUp(string token, long afterSeq) =>
+        CallAsync(() => sync.CatchUpAsync(token, Session(), afterSeq, Context.ConnectionAborted));
 
     public Task<CardView> MoveCard(string token, Guid cardId, MoveCardRequest request) =>
         ChangeAsync(() => commands.MoveCardAsync(token, Session(), cardId, request, Context.ConnectionAborted));

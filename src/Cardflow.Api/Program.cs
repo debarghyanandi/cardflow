@@ -11,6 +11,7 @@ builder.Services.AddDbContext<CardflowDbContext>(options =>
 builder.Services.AddScoped<BoardService>();
 builder.Services.AddScoped<BoardEventStore>();
 builder.Services.AddScoped<BoardCommandService>();
+builder.Services.AddScoped<BoardSyncService>();
 builder.Services.AddSingleton<BoardEventPublisher>();
 builder.Services.AddHostedService<RankMaintenance>();
 builder.Services.AddSignalR().AddStackExchangeRedis(
