@@ -4,6 +4,7 @@ using Cardflow.Api.Ordering;
 using Cardflow.Api.Realtime;
 using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.EntityFrameworkCore;
+using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<CardflowDbContext>(options =>
@@ -13,6 +14,11 @@ builder.Services.AddScoped<BoardEventStore>();
 builder.Services.AddScoped<BoardCommandService>();
 builder.Services.AddScoped<BoardSyncService>();
 builder.Services.AddSingleton<BoardEventPublisher>();
+builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(
+    builder.Configuration.GetConnectionString("Redis")
+    ?? throw new InvalidOperationException("A Redis connection string is required.")));
+builder.Services.AddSingleton<BoardPresence>();
+builder.Services.AddHostedService<PresenceSweep>();
 builder.Services.AddHostedService<RankMaintenance>();
 builder.Services.AddHostedService<BoardEventPruner>();
 builder.Services.AddSignalR().AddStackExchangeRedis(

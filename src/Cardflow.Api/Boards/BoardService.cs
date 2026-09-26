@@ -95,6 +95,19 @@ public sealed class BoardService(CardflowDbContext database)
         }
     }
 
+    public async Task<(Guid BoardId, MemberView Member)> PresenceMemberAsync(string token, string session, CancellationToken cancellationToken)
+    {
+        var board = await FindBoardAsync(token, cancellationToken);
+        if (session.Length != 64) throw new BoardProblem(401, "Join this board first.");
+        var hash = SessionCookies.Hash(session);
+        var member = await database.BoardMembers.AsNoTracking()
+            .Where(candidate => candidate.BoardId == board.Id && candidate.SessionHash == hash)
+            .Select(candidate => new MemberView(candidate.Id, candidate.Nickname, candidate.Colour))
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? throw new BoardProblem(403, "This session is not a member of the board.");
+        return (board.Id, member);
+    }
+
     public async Task<BoardSnapshot> RenameBoardAsync(string token, string session, RenameBoardRequest request, CancellationToken cancellationToken)
     {
         var board = await AuthorizeAsync(token, session, cancellationToken);

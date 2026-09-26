@@ -295,7 +295,7 @@ On connect  → ZADD presence:{boardId} {now} {connectionId}
 
 Every 10s   → client heartbeat → ZADD refreshes the timestamp
 
-Every 15s   → server sweep → ZREMRANGEBYSCORE removes anyone older than 30s
+Every 5s    → server sweep → removes anyone older than 20s
               → broadcast MemberLeft for each
 
 Cursor move → client throttles to 20 per second
@@ -304,6 +304,7 @@ Cursor move → client throttles to 20 per second
 ```
 
 The sorted set is what makes this self-healing. A browser closed without warning simply stops refreshing its timestamp and gets swept.
+The 20-second expiry plus at most five seconds until the next sweep keeps an orphaned member's removal within Phase 4's 30-second limit. The sweep atomically rechecks the score before removing it, so a concurrent heartbeat wins. Redis holds connection metadata and edit markers; cursor coordinates are broadcast only. A joined WebSocket keeps its authorized board/member identity in connection context, so high-frequency cursor messages need no PostgreSQL query. Rejoining after a reconnect revalidates against PostgreSQL.
 
 ### Two servers
 
@@ -426,6 +427,10 @@ The browser immediately changes the visible order, then sends the IDs beside the
 **D13 — React state before another state library.** `[decided]` 2026-09-26
 
 One board has one confirmed snapshot plus at most one pending move. A pure projector and React state cover this without Zustand. *Why:* the replay and rollback rules remain easy to test directly, and another dependency adds no useful behavior yet.
+
+**D14 — Presence expires in 20 seconds, swept every 5 seconds.** `[decided]` 2026-09-27
+
+The original 30-second expiry and 15-second sweep could leave an orphan visible for about 45 seconds, contradicting Phase 4's under-30-second acceptance condition. Keep the 10-second client heartbeat, but expire after 20 seconds and sweep every five. Normal disconnect removes presence immediately; the Redis sweep handles missed disconnects. One connection owns one board membership, while the UI groups multiple tabs by member ID.
 
 ---
 

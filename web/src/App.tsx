@@ -10,6 +10,8 @@ import { applyEvent, beginMove, cardOrder, rejectMove, visibleBoard,
   type Board, type BoardEvent, type BoardState, type Card, type Column, type Move } from './boardState'
 
 type BoardSync = { seq: number; snapshot: Board | null; events: BoardEvent[] }
+type Presence = { connectionId: string; memberId: string; nickname: string; colour: string; editingCardId: string | null }
+type Cursor = Pick<Presence, 'connectionId' | 'nickname' | 'colour'> & { x: number; y: number }
 const collisionDetection: CollisionDetection = args => pointerWithin({
   ...args, droppableContainers: args.droppableContainers.filter(container => container.id !== args.active.id)
 })
@@ -73,8 +75,11 @@ function useLiveBoard(token: string, snapshot: Board) {
   const [state, setState] = useState<BoardState>({ confirmed: snapshot, pending: null })
   const [connected, setConnected] = useState(false)
   const [notice, setNotice] = useState('')
+  const [presence, setPresence] = useState<Record<string, Presence>>({})
+  const [cursors, setCursors] = useState<Record<string, Cursor>>({})
   const current = useRef(state)
   const connection = useRef<HubConnection | null>(null)
+  const lastCursor = useRef(0)
   const pull = useRef<() => Promise<void>>(async () => {})
   const update = (change: (value: BoardState) => BoardState) => {
     const next = change(current.current)
@@ -122,7 +127,21 @@ function useLiveBoard(token: string, snapshot: Board) {
     }
     pull.current = catchUp
     hub.on('BoardEvent', (event: BoardEvent) => { waiting.set(event.seq, event); drain() })
-    hub.onreconnecting(() => { if (!disposed) setConnected(false) })
+    hub.on('PresenceSnapshot', (entries: Presence[]) => {
+      if (!disposed) setPresence(Object.fromEntries(entries.map(entry => [entry.connectionId, entry])))
+    })
+    hub.on('PresenceChanged', (entry: Presence) => {
+      if (!disposed) setPresence(previous => ({ ...previous, [entry.connectionId]: entry }))
+    })
+    hub.on('PresenceLeft', (connectionId: string) => {
+      if (disposed) return
+      setPresence(previous => { const next = { ...previous }; delete next[connectionId]; return next })
+      setCursors(previous => { const next = { ...previous }; delete next[connectionId]; return next })
+    })
+    hub.on('CursorMoved', (cursor: Cursor) => {
+      if (!disposed) setCursors(previous => ({ ...previous, [cursor.connectionId]: cursor }))
+    })
+    hub.onreconnecting(() => { if (!disposed) { setConnected(false); setPresence({}); setCursors({}) } })
     hub.onreconnected(async () => {
       if (disposed) return
       try { await hub.invoke('JoinBoard', token); setConnected(true); await catchUp() }
@@ -146,8 +165,24 @@ function useLiveBoard(token: string, snapshot: Board) {
       }
     }
     void start()
-    return () => { disposed = true; connection.current = null; void hub.stop() }
+    const heartbeat = window.setInterval(() => {
+      if (hub.state === 'Connected') void hub.invoke('Heartbeat', token).catch(async () => {
+        if (!disposed && hub.state === 'Connected') {
+          try { await hub.invoke('JoinBoard', token) }
+          catch (cause) { setNotice(`Presence rejoin failed: ${message(cause)}`) }
+        }
+      })
+    }, 10000)
+    return () => { disposed = true; window.clearInterval(heartbeat); connection.current = null; void hub.stop() }
   }, [token])
+
+  function cursorMoved(event: React.PointerEvent<HTMLElement>) {
+    if (!connected || !connection.current || Date.now() - lastCursor.current < 50) return
+    lastCursor.current = Date.now()
+    const x = Math.max(0, Math.min(1, event.clientX / window.innerWidth))
+    const y = Math.max(0, Math.min(1, event.clientY / window.innerHeight))
+    void connection.current.invoke('MoveCursor', token, x, y).catch(() => {})
+  }
 
   async function move(move: Move) {
     update(value => beginMove(value, move))
@@ -166,19 +201,33 @@ function useLiveBoard(token: string, snapshot: Board) {
     }
   }
 
-  return { board: visibleBoard(state), pending: state.pending, connected, notice, move, hub: connection }
+  return { board: visibleBoard(state), pending: state.pending, connected, notice, move, hub: connection,
+    presence: Object.values(presence), cursors: Object.values(cursors), cursorMoved }
 }
 
 function LiveBoard({ token, snapshot }: { token: string; snapshot: Board }) {
-  const { board, pending, connected, notice, move, hub } = useLiveBoard(token, snapshot)
+  const { board, pending, connected, notice, move, hub, presence, cursors, cursorMoved } = useLiveBoard(token, snapshot)
   const [columnTitle, setColumnTitle] = useState('')
   const [cardTitles, setCardTitles] = useState<Record<string, string>>({})
+  const [editing, setEditing] = useState<Card | null>(null)
+  const [editTitle, setEditTitle] = useState('')
+  const [editDescription, setEditDescription] = useState('')
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
   async function invoke(method: string, ...args: unknown[]) {
-    if (!hub.current) return
-    try { await hub.current.invoke(method, token, ...args) }
-    catch (cause) { window.alert(message(cause)) }
+    if (!hub.current) { window.alert('Not connected to the server.'); return false }
+    try { await hub.current.invoke(method, token, ...args); return true }
+    catch (cause) { window.alert(message(cause)); return false }
+  }
+
+  function openEditor(card: Card) {
+    setEditing(card); setEditTitle(card.title); setEditDescription(card.description)
+    void invoke('SetEditing', card.id)
+  }
+
+  function closeEditor() {
+    setEditing(null)
+    void invoke('SetEditing', null)
   }
 
   function dropped(event: DragEndEvent) {
@@ -198,7 +247,8 @@ function LiveBoard({ token, snapshot }: { token: string; snapshot: Board }) {
     void move({ cardId: card.id, newColumnId: target.id, previousCardId, nextCardId, version: card.version })
   }
 
-  return <main className="workspace">
+  const online = [...new Map(presence.map(entry => [entry.memberId, entry])).values()]
+  return <main className="workspace" onPointerMove={cursorMoved}>
     <header className="topbar">
       <div className="brand">cardflow<span>↗</span></div>
       <div className="board-title"><small>BOARD</small><h1>{board.title}</h1></div>
@@ -207,9 +257,16 @@ function LiveBoard({ token, snapshot }: { token: string; snapshot: Board }) {
     </header>
     {notice && <p className="notice" role="status">{notice}</p>}
     <section className="board-meta"><span>{board.columns.length} columns</span><span>·</span><span>{board.members.length} members</span><span>·</span><span>Event #{board.seq}</span></section>
+    <section className="members" aria-label="Board members">
+      <span>Here now ({online.length})</span>
+      {online.map(member => <span key={member.memberId} className="member" title={member.nickname}>
+        <i style={{ background: member.colour }} />{member.nickname}
+      </span>)}
+    </section>
     <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragEnd={dropped}>
       <div className="columns">
         {board.columns.map(column => <BoardColumn key={column.id} column={column} disabled={!!pending}
+          presence={presence} onEdit={openEditor}
           title={cardTitles[column.id] ?? ''} onTitle={value => setCardTitles(current => ({ ...current, [column.id]: value }))}
           onCreate={async () => {
             const title = cardTitles[column.id]?.trim()
@@ -227,17 +284,37 @@ function LiveBoard({ token, snapshot }: { token: string; snapshot: Board }) {
         </form>
       </div>
     </DndContext>
+    {cursors.filter(cursor => presence.some(entry => entry.connectionId === cursor.connectionId)).map(cursor => <div key={cursor.connectionId} className="remote-cursor"
+      style={{ left: `${cursor.x * 100}%`, top: `${cursor.y * 100}%`, color: cursor.colour }}>
+      <span>➤</span><label style={{ background: cursor.colour }}>{cursor.nickname}</label>
+    </div>)}
+    {editing && <div className="edit-overlay" onClick={closeEditor}>
+      <form className="edit-dialog" onClick={event => event.stopPropagation()} onSubmit={event => {
+        event.preventDefault()
+        void (async () => {
+          if (await invoke('EditCard', editing.id, { title: editTitle, description: editDescription, version: editing.version }))
+            closeEditor()
+        })()
+      }}>
+        <h2>Edit card</h2>
+        <label>Title<input value={editTitle} onChange={event => setEditTitle(event.target.value)} maxLength={160} required /></label>
+        <label>Description<textarea value={editDescription} onChange={event => setEditDescription(event.target.value)} maxLength={4000} /></label>
+        <div><button type="button" onClick={closeEditor}>Cancel</button><button type="submit">Save</button></div>
+      </form>
+    </div>}
   </main>
 }
 
-function BoardColumn({ column, disabled, title, onTitle, onCreate }: {
+function BoardColumn({ column, disabled, title, onTitle, onCreate, presence, onEdit }: {
   column: Column; disabled: boolean; title: string; onTitle: (title: string) => void; onCreate: () => Promise<void>
+  presence: Presence[]; onEdit: (card: Card) => void
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: column.id })
   return <section ref={setNodeRef} className={`column ${isOver ? 'column-over' : ''}`}>
     <header><h2>{column.title}</h2><span>{column.cards.length}</span></header>
     <SortableContext items={column.cards.map(card => card.id)} strategy={verticalListSortingStrategy}>
-      <div className="card-list">{column.cards.map(card => <BoardCard key={card.id} card={card} disabled={disabled} />)}</div>
+      <div className="card-list">{column.cards.map(card => <BoardCard key={card.id} card={card} disabled={disabled}
+        editors={presence.filter(member => member.editingCardId === card.id)} onEdit={() => onEdit(card)} />)}</div>
     </SortableContext>
     <form className="add-card" onSubmit={event => { event.preventDefault(); void onCreate() }}>
       <input placeholder="Add a card…" value={title} onChange={event => onTitle(event.target.value)} maxLength={160} />
@@ -246,11 +323,13 @@ function BoardColumn({ column, disabled, title, onTitle, onCreate }: {
   </section>
 }
 
-function BoardCard({ card, disabled }: { card: Card; disabled: boolean }) {
+function BoardCard({ card, disabled, editors, onEdit }: { card: Card; disabled: boolean; editors: Presence[]; onEdit: () => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: card.id, disabled })
   return <article ref={setNodeRef} className={`card ${isDragging ? 'dragging' : ''}`}
     style={{ transform: CSS.Transform.toString(transform), transition }} {...attributes} {...listeners}>
-    <span className="card-grip">⋮⋮</span><span>{card.title}</span>
+    <span className="card-grip">⋮⋮</span><span className="card-content">{card.title}
+      {editors.map(editor => <small key={editor.connectionId} style={{ color: editor.colour }}>{editor.nickname} editing</small>)}
+    </span><button className="edit-card" onPointerDown={event => event.stopPropagation()} onClick={onEdit}>Edit</button>
   </article>
 }
 

@@ -1,6 +1,6 @@
 # Cardflow engineering experience
 
-Last updated: 2026-09-26, after the first fully passing GitHub Actions run for Phases 0–3.
+Last updated: 2026-09-27, after local Phase 4 verification.
 
 This is a living account of how we built Cardflow, what we actually ran, and how we diagnosed mistakes. It complements [`architecture.md`](architecture.md), which describes the intended system, and [`codex-prompt.md`](codex-prompt.md), which defines the phase gates. Add to this file whenever a later phase changes the design, exposes a failure, or gains new verification. Do not rewrite a failed attempt as if it never happened.
 
@@ -11,7 +11,7 @@ This is a living account of how we built Cardflow, what we actually ran, and how
 - Run the app and tests before claiming success. A local pass is not a GitHub Actions pass.
 - Commit logical units. Red tests and real mistakes may appear in history, but leave the phase in a passing state.
 - Ask the user for manual work such as `git push` and cloud setup. The user puts long logs in the ignored `temp-ref/` directory.
-- Phase 0 (local stack), Phase 1 (REST board), Phase 2 (real-time), and Phase 3 (optimistic browser and reconnect) are implemented. Phase 4 has not started. The latest supplied GitHub Actions log is green.
+- Phases 0–3 have a passing GitHub Actions run. Phase 4 (presence) is implemented and passes locally; its hosted CI run has not yet been supplied.
 
 The only untracked file currently visible outside this document is `src/Cardflow.Api/Properties/launchSettings.json`; it belongs to the local environment and has deliberately not been staged.
 
@@ -108,7 +108,7 @@ The next log again stopped in the smoke step, but this time there was no sampled
 4. Reproduce the smallest relevant path locally: direct health URLs, two-instance WebSocket test, convergence workload, or browser drag. Keep the original acceptance test unchanged when fixing an overload bug.
 5. Verify the fix at the correct level, commit it, then ask the user to push. Only the pushed GitHub Actions run can establish that Linux CI is green.
 
-## Latest verification
+## Last hosted verification (Phases 0–3)
 
 The most recent supplied `temp-ref/ci.logs.txt` is a passing GitHub Actions run on 2026-09-26. It shows:
 
@@ -124,6 +124,24 @@ Playwright browser tests: 2 passed
 ```
 
 The workflow then ran `docker compose down` as planned. The Node/action deprecation warning during post-job cleanup was not a test failure. No AWS resources are deployed automatically.
+
+## Phase 4 — presence (local verification, 2026-09-27)
+
+The goal was to show which members are online, their colours and cursors, and who is editing a card. A browser tab closing without warning must disappear within 30 seconds; an orphaned Redis entry must disappear even if the API never gets a disconnect callback.
+
+We added a Redis sorted set of connection IDs scored by last heartbeat, a metadata hash for nickname/colour/editing card, and a board registry for the sweep. The SignalR hub registers presence on join, sends an initial snapshot, broadcasts changes and cursors through the existing Redis backplane, and removes presence on disconnect. Multiple tabs have separate connection IDs; the UI groups them by member ID. The client sends a heartbeat every ten seconds, throttles pointer messages to at most one every 50 ms (about 20/s), and does not store coordinates in Redis or PostgreSQL. The join validates membership in PostgreSQL; subsequent high-frequency cursor messages validate the token against that connection's joined identity without a database read. Reconnect re-joins and revalidates.
+
+The architecture sketch originally said a 30-second expiry with a 15-second sweep. Worst case, that could leave an orphan visible for roughly 45 seconds, contradicting the phase gate. We changed it to 20-second expiry and five-second sweep: worst-case removal is about 25 seconds after the last heartbeat. The sweep's Lua script rechecks the score before deletion, so a heartbeat racing the sweep wins. D14 in `architecture.md` records the decision.
+
+Mistakes and their evidence:
+
+1. A plain `dotnet build` tried to read the user-level NuGet config, which this sandbox cannot access. `dotnet build --no-restore` compiled successfully from the existing restore. Docker/Testcontainers calls also needed explicit permission for the Docker named pipe. These were environment restrictions, not app failures.
+2. The first generic Testcontainers Redis test did not compile: `UntilPortIsAvailable` is not a method in the installed version. We changed it to the supported `UntilMessageIsLogged("Ready to accept connections")`, rebuilt with zero warnings, and ran the test against a real Redis container.
+3. The first browser experiment used Chrome DevTools `Page.crash`. The member vanished, but Playwright hung during crash/renderer teardown and hit its 30-second test timeout. We changed the browser test to close the tab without running unload handlers and added a separate Redis test that forcibly ages one member's score while keeping another fresh. This splits normal abrupt tab loss from the orphan-sweep failure mode.
+4. The browser assertions then passed, but on Windows Playwright's auto-started Vite process did not exit after printing success. Starting Vite separately and letting Playwright reuse it produced a clean exit code 0. We did not count the earlier printed `ok` as a complete passing run.
+5. A review found that the first cursor handler queried PostgreSQL for membership on every pointer update. That contradicted the “cursors never touch Postgres” requirement. We retained membership checked at join, saved the authorized member/token in SignalR connection context, and rechecked that context on each cursor message. A second review found that cursor messages still refreshed Redis presence on every move; we removed that write too. Only the separate heartbeat refreshes Redis. If a tab was suspended long enough to expire, a failed heartbeat asks it to re-join. The final browser run used rebuilt API containers with both corrections.
+
+Final local evidence: `dotnet build Cardflow.slnx --configuration Release --no-restore` passed with zero warnings; `dotnet test Cardflow.slnx --configuration Release --no-build` passed 20 tests; the cross-instance SignalR test passed; `npm run build` and `npm test` passed; the 20-client/200-operation convergence test passed; all three Playwright tests passed with exit code 0 against the rebuilt two-API Compose stack. The Playwright presence test observed the live member, colour-coded cursor, editing marker, and disappearance after closing the guest tab. The Redis test proved that the sweep removes a stale orphan and leaves a fresh heartbeat intact. The browser test's fast disappearance was the disconnect path; the Redis test covers the fallback. Hosted CI for Phase 4 remains unverified until the user pushes and supplies its log.
 
 ## Next update rule
 
