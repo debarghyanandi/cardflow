@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path="architecture.md" />
+    <File Path="README.md" />
+    <File Path="stories.md" />
+  </Folder>
+  <Project Path="src/Cardflow.Api/Cardflow.Api.csproj" />
+  <Project Path="src/Cardflow.App/Cardflow.App.csproj" Id="6b3ed12f-3501-43d4-a54c-47f023ab3681" />
+  <Project Path="src/Cardflow.Domain/Cardflow.Domain.csproj" Id="2a4ee662-8224-4ffc-a7d5-0d77a458e8b0" />
+  <Project Path="src/Cardflow.Infrastructure/Cardflow.Infrastructure.csproj" Id="31b02282-33c5-41df-ac86-926ee7d50fe4" />
+  <Project Path="tests/Cardflow.Tests.Unit/Cardflow.Tests.Unit.csproj" Id="d3c2b79c-b30f-4713-b192-9b6c9582bdb6" />
+</Solution>
