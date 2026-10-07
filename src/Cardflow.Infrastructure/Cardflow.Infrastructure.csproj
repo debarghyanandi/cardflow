@@ -7,6 +7,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="AspNetCore.HealthChecks.NpgSql" Version="9.0.0" />
+    <PackageReference Include="AspNetCore.HealthChecks.Redis" Version="9.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Cardflow.App\Cardflow.App.csproj" />
     <ProjectReference Include="..\Cardflow.Domain\Cardflow.Domain.csproj" />
   </ItemGroup>
