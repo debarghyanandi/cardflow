@@ -1,6 +1,13 @@
 using Cardflow.Infrastructure;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 var builder = WebApplication.CreateBuilder(args);
+
+var instanceName = builder.Configuration["InstanceName"];
+if (string.IsNullOrWhiteSpace(instanceName))
+{
+    throw new InvalidOperationException("InstanceName is required and must not be blank.");
+}
 
 // Add services to the container.
 
@@ -30,16 +37,26 @@ app.MapControllers();
 
 app.MapHealthChecks("/health", new HealthCheckOptions
 {
-    ResponseWriter = (context, report) =>
-        context.Response.WriteAsJsonAsync(new
-        {
-            status = report.Status.ToString(),
-            instance = app.Configuration["InstanceName"]
-                ?? Environment.MachineName,
-            checks = report.Entries.ToDictionary(
-                entry => entry.Key,
-                entry => entry.Value.Status.ToString())
-        }, cancellationToken: context.RequestAborted)
+    ResponseWriter = WriteHealthResponse
+});
+
+app.MapHealthChecks("/health/live", new HealthCheckOptions
+{
+    // Liveness checks the API process without probing its dependencies.
+    Predicate = _ => false,
+    ResponseWriter = WriteHealthResponse
 });
 
 app.Run();
+
+Task WriteHealthResponse(HttpContext context, HealthReport report) =>
+    context.Response.WriteAsJsonAsync(new
+    {
+        status = report.Status.ToString(),
+        instance = instanceName,
+        checks = report.Entries.ToDictionary(
+            entry => entry.Key,
+            entry => entry.Value.Status.ToString())
+    }, cancellationToken: context.RequestAborted);
+
+public partial class Program { }
