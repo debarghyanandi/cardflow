@@ -13,15 +13,16 @@
 Every layer running locally, nothing useful yet.
 
 **BE-0.1 Solution skeleton**
-Task: .NET 10 solution (Api, Application, Domain, Infrastructure, Tests) with `GET /health`.
-- [ ] `dotnet build` and `dotnet test` pass on a clean clone
-- [ ] `/health` returns 200 with Postgres and Redis status, plus the instance name
+Task: .NET 10 solution (Api, App, Domain, Infrastructure, Tests) with `GET /health` and `GET /health/live` (D34).
+- [x] `dotnet build` and `dotnet test` pass on a clean clone
+- [x] `/health` returns 200 with Postgres and Redis status, plus the instance name
 
 **BE-0.2 Local stack**
 Task: Docker Compose with Postgres, Redis, `api-1`, `api-2`, nginx, Mailpit (catches emails locally).
 - [ ] `docker compose up` works on a clean machine
 - [ ] Repeated `/health` calls through nginx show both instance names
-- [ ] Stop `api-1` → `/health` through nginx still returns 200
+- [ ] With Postgres and Redis running, stop `api-1` → `/health` through nginx still returns 200 from `api-2` (passive failover, D34)
+- [ ] Compose health checks for `api-1` and `api-2` use `/health/live` (D34)
 - [ ] Mailpit's web page opens on localhost
 
 **BE-0.3 Database and real-database tests**
@@ -38,6 +39,7 @@ Task: SignalR hub `/hubs/board`, WebSockets only, Redis backplane. A `Ping` reac
 Task: GitHub Actions — build, test, Compose up, `/health` smoke check.
 - [ ] Green on push
 - [ ] A failing test fails the run
+- [ ] CI installs the SDK named in `global.json` (`setup-dotnet` with `global-json-file`)
 
 **FE-0.1 React skeleton and theme**
 Task: Vite + React + TypeScript + Tailwind. Theme tokens and fonts from `architecture.md` §5. Black header with logo.

@@ -795,6 +795,14 @@ Replaces D2 and the anonymous half of D18. Joining a board needs the same emaile
 **D33 — A removed member cannot rejoin.** `[proposed]` 2026-10-07
 With stable accounts, removal is attached to the account, not the link. The join endpoint refuses an account whose membership is marked removed. *Why:* in v1 removing someone did nothing unless the link was also reset. Undoing a removal is deferred.
 
+**D34 — Two health endpoints.** `[decided]` 2026-10-08
+- `/health` is the dependency report for people and alarms. It checks Postgres and Redis and returns 503 if either fails.
+- `/health/live` checks only that the process is up and does not touch any dependency.
+- Compose container health checks use `/health/live`.
+- Local nginx fails over passively: it marks an instance down when a request it forwards fails. It does not probe a URL, because active checks need NGINX Plus. The production routing policy is decided together with hosting (§18).
+
+*Why:* routing on the full report would turn a Redis blip into a full outage, even though REST loads still work from Postgres (§6). *Cost:* an instance that loses Redis keeps serving and silently breaks I6 for its clients. A failing `/health` must raise an alarm; it is not a routing signal.
+
 ---
 
 ## 14. Open questions
