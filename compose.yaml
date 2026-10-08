@@ -1,0 +1,39 @@
+name: cardflow
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: cardflow
+      POSTGRES_PASSWORD: cardflow
+      POSTGRES_DB: cardflow
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "cardflow", "-d", "cardflow"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mailpit:
+    image: axllent/mailpit:v1.27.4
+    ports:
+      - "127.0.0.1:8025:8025"
+      - "127.0.0.1:1025:1025"
+
+volumes:
+  postgres_data:
+    name: cardflow-pgdata
