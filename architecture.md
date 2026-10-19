@@ -800,6 +800,7 @@ With stable accounts, removal is attached to the account, not the link. The join
 - `/health/live` checks only that the process is up and does not touch any dependency.
 - Compose container health checks use `/health/live`.
 - Local nginx fails over passively: it marks an instance down when a request it forwards fails. It does not probe a URL, because active checks need NGINX Plus. The production routing policy is decided together with hosting (§18).
+- Local Compose uses HTTP on loopback-only published ports and explicitly disables HTTPS redirection. Outside Compose, redirection stays enabled by default. Public TLS and trusted forwarded headers remain part of §18.
 
 *Why:* routing on the full report would turn a Redis blip into a full outage, even though REST loads still work from Postgres (§6). *Cost:* an instance that loses Redis keeps serving and silently breaks I6 for its clients. A failing `/health` must raise an alarm; it is not a routing signal.
 

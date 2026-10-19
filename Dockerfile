@@ -14,7 +14,7 @@ RUN dotnet publish src/Cardflow.Api/Cardflow.Api.csproj \
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 
-# Used by the Compose health check later
+# Used by the Compose liveness check
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*

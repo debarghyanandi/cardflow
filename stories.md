@@ -19,11 +19,15 @@ Task: .NET 10 solution (Api, App, Domain, Infrastructure, Tests) with `GET /heal
 
 **BE-0.2 Local stack**
 Task: Docker Compose with Postgres, Redis, `api-1`, `api-2`, nginx, Mailpit (catches emails locally).
-- [ ] `docker compose up` works on a clean machine
-- [ ] Repeated `/health` calls through nginx show both instance names
-- [ ] With Postgres and Redis running, stop `api-1` → `/health` through nginx still returns 200 from `api-2` (passive failover, D34)
-- [ ] Compose health checks for `api-1` and `api-2` use `/health/live` (D34)
-- [ ] Mailpit's web page opens on localhost
+- [x] `docker compose up` works on a clean machine
+- [x] Repeated `/health` calls through nginx show both instance names
+- [x] With Postgres and Redis running, stop `api-1` → `/health` through nginx still returns 200 from `api-2` (passive failover, D34)
+- [x] Compose health checks for `api-1` and `api-2` use `/health/live` (D34)
+- [x] Mailpit's web page opens on localhost
+
+Local checks passed on 2026-10-19, including a fresh clone and empty database volume.
+See [verification evidence](iac/BE-0.2-verification.md). Claude review is pending;
+CI is added in BE-0.5.
 
 **BE-0.3 Database and real-database tests**
 Task: First EF Core migration. One integration test using Testcontainers.
