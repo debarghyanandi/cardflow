@@ -5,7 +5,7 @@
     <File Path="compose.yaml" />
     <File Path="Dockerfile" />
     <File Path="global.json" />
-    <File Path="iac/BE-0.2-verification.md" />
+    <File Path="docs/verification/BE-0.2.md" />
     <File Path="iac/nginx.conf" />
     <File Path="README.md" />
     <File Path="scripts/Test-LocalStack.ps1" />

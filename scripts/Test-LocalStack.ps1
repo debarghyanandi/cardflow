@@ -74,6 +74,15 @@ if ($mailpit.StatusCode -ne 200 -or $mailpit.Content -notmatch 'Mailpit') {
 }
 Write-Host 'PASS: Mailpit web interface returns 200.'
 
+# Tokens travel in the query string on /hubs/board, so nginx must not log query strings.
+$marker = "logcheck$([Guid]::NewGuid().ToString('N'))"
+$null = Read-Health -Path "/health/live?access_token=$marker"
+$nginxLog = (Invoke-Compose -ComposeArguments @('logs', 'nginx')) -join "`n"
+if ($nginxLog -match $marker) {
+    throw 'nginx logged a query string. Tokens would leak into the logs.'
+}
+Write-Host 'PASS: nginx access log leaves out query strings.'
+
 try {
     Invoke-Compose -ComposeArguments @('stop', 'api-1')
     # Do not retry client failures: nginx itself must retry the failed upstream.

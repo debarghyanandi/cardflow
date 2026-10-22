@@ -32,7 +32,7 @@ services:
     ports:
       - "127.0.0.1:5433:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "cardflow", "-d", "cardflow"]
       interval: 5s
@@ -87,5 +87,4 @@ services:
       start_period: 10s
 
 volumes:
-  postgres_data:
-    name: cardflow-pgdata
+  pgdata:

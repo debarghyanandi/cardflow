@@ -1,7 +1,7 @@
 # Cardflow — Features and Stories
 
 > Short task + acceptance criteria (AC) for each story. Copy each story into GitHub Projects as one item.
-> **Done** = every AC checked, tests pass in CI, and you ran it yourself.
+> **Done** = every AC checked, tests pass in CI, Claude Code's check passed, and you ran it yourself (`architecture.md` §0, D38).
 > Design: **canvas** = [Cardflow v2 Screens](https://claude.ai/artifact/EMEXmxWSgYpWUt3zxvMPiA) (artboard named in each story) · **Figma** = [Card flow 2](https://www.figma.com/design/R9GNkviHAJtm3fzF1PykpO/Card-flow-2).
 > Rules behind the stories: `architecture.md`. Invariants are written I1–I7.
 > Build one feature at a time: agree the request/response and hub message shapes first, then its BE and FE stories together.
@@ -26,8 +26,8 @@ Task: Docker Compose with Postgres, Redis, `api-1`, `api-2`, nginx, Mailpit (cat
 - [x] Mailpit's web page opens on localhost
 
 Local checks passed on 2026-10-19, including a fresh clone and empty database volume.
-See [verification evidence](iac/BE-0.2-verification.md). Claude review is pending;
-CI is added in BE-0.5.
+See [verification evidence](docs/verification/BE-0.2.md). Claude Code review passed on
+2026-10-22. CI is added in BE-0.5.
 
 **BE-0.3 Database and real-database tests**
 Task: First EF Core migration. One integration test using Testcontainers.
@@ -61,6 +61,42 @@ Task: Generate TypeScript types from the API's OpenAPI description.
 - [ ] One command regenerates the types
 - [ ] CI fails if the generated types are out of date
 
+**FE-0.4 Checked API responses**
+Task: A Zod schema for each API response, matching the generated types. One `api` helper parses every response before the app uses it (D37).
+- [ ] A response with a missing or wrong-typed field shows an error state, not a broken screen
+- [ ] A unit test feeds the helper a bad response and expects the error
+
+---
+
+## F0b — Early AWS deploy (before 7 December)
+
+The skeleton on real AWS, built to be destroyed (`architecture.md` §18, D35). **Uses the $190 credit, so it only counts if done before 7 December.** Tear everything down after every session.
+
+**OPS-0.6 Guardrails first**
+Task: Budget alarms at $5 and $25. An admin user with MFA (never the root user). A GitHub OIDC role for deploys, scoped to this repo. No NAT gateway anywhere.
+- [ ] Both budget alarms exist and send email
+- [ ] No long-lived AWS keys in GitHub secrets
+- [ ] The deploy role can only be assumed from this repo's workflows
+
+**OPS-0.7 The stack in CDK (C#)**
+Task: VPC with public subnets and no NAT gateway · ECR · ECS Fargate service with **2 tasks** behind an ALB (idle timeout 300 seconds) · RDS Postgres `db.t4g.micro` · ElastiCache Redis, smallest node · connection strings from Secrets Manager · task role vs execution role.
+- [ ] `cdk deploy` from nothing works; `cdk diff` is read before every apply
+- [ ] `/health` through the ALB shows both task names and healthy Postgres and Redis
+- [ ] RDS and Redis are not reachable from the internet
+- [ ] The task role has no permissions it does not use
+
+**OPS-0.8 Stack up and stack down**
+Task: Two `workflow_dispatch` workflows (never on push). Up: build → push to ECR → `cdk deploy` → run migrations → print the URL. Down: `cdk destroy` → confirm nothing is left.
+- [ ] Time from nothing to a working `/health` is measured and written down (Q7)
+- [ ] After down, only the ECR repository is left
+- [ ] Both job summaries are saved as screenshots for the README
+
+**OPS-0.9 Rolling deploy and CloudWatch**
+Task: Deploy a new image while a load script runs. Deregistration delay, SIGTERM handling and connection draining set so no request fails. Log groups, one 5xx alarm. Then break a deploy on purpose (wrong task role or a failing health check) and find the cause from the console and logs.
+- [ ] A rolling deploy under load shows zero failed requests
+- [ ] The broken-deploy investigation is written up in `iac/` — symptom, where you looked, cause, fix
+- [ ] The stack is torn down at the end
+
 ---
 
 ## F1 — Create and open a board
@@ -68,7 +104,7 @@ Task: Generate TypeScript types from the API's OpenAPI description.
 **BE-1.0 Identity plumbing and dev sign-in**
 Task: `users` table, JWT access-token checking on REST and the hub, and `POST /api/dev/sign-in {email}` that issues a real access token with no code. Development only.
 - [ ] Every board endpoint and hub method needs a valid token → otherwise 401
-- [ ] The dev sign-in endpoint does not exist outside Development
+- [ ] The dev sign-in endpoint does not exist outside Development — the one exception is the Staging switch from OPS-6.3, and never in Production
 
 **FE-1.0 Dev sign-in**
 Task: Dev-only page: type an email, get signed in. Keep the access token in memory.
@@ -86,9 +122,10 @@ Task: `GET /api/boards/{token}` returns title, cards per column, members and cur
 - [ ] Unknown token → 404
 
 **FE-1.1 Landing page**
-Task: "Name your board" form → create → go to the board.
+Task: "Name your board" form → create → go to the board. React Hook Form + a Zod schema with the API's rule (D37).
 Screen: canvas › *Landing — create a board*
 - [ ] Empty name shows an error and sends nothing
+- [ ] The Zod schema uses the same 1–60 character rule as BE-1.1
 - [ ] Success opens `/b/{token}`
 
 **FE-1.2 Board page (read-only)**
@@ -117,6 +154,7 @@ Task: `GET /preview` returns the board title only. `POST /join` adds the signed-
 **BE-2.2 Membership check on every request**
 Task: One guard used by every board endpoint and hub method (I3).
 - [ ] Not a member → 403, checked by tests on REST and on the hub
+- [ ] IDOR test: a member of board A asking for a card of board B by its id → 404
 
 **FE-2.1 Join page**
 Task: Board title, "You'll join as {username}", Join button. A signed-out visitor signs in first and comes back here.
@@ -150,7 +188,7 @@ Screen: canvas › *Board — with cards*
 - [ ] Empty title is not sent
 
 **FE-3.2 Card details window**
-Task: Open a card. Edit title and description. Saves when the field loses focus.
+Task: Open a card. Edit title and description. Saves when the field loses focus. The fields use React Hook Form + a Zod schema with the API's rules (D37).
 Screen: canvas › *Card details*
 - [ ] Esc and the X close it
 - [ ] Shows the card number and the created and updated dates
@@ -241,6 +279,14 @@ Screen: canvas › *Board — reconnecting*
 **FE-6.2 Gap detection**
 Task: A live event whose `seq` is not the next one triggers a catch-up.
 - [ ] Unit test on the board state: a gap causes a catch-up call
+
+**OPS-6.3 Redeploy the real-time core (before 7 December)**
+Task: Run stack-up (OPS-0.8) again, this time with the real app: boards, cards, drag, live sync and catch-up across the two Fargate tasks. Sign-in is not built yet, so the app runs as `Staging` with `DevSignIn__Enabled=true` — the dev sign-in exists only when that switch is on in Staging, never in Production (D40). Test, then tear down. **Uses the AWS credit, so it only counts if done before 7 December.**
+- [ ] Two browsers on the public ALB address, landing on different tasks, see each other's moves within 1 second
+- [ ] Stop one task during a drag session → the board stays live and catches up (I5, I6)
+- [ ] With the switch off, or in `Production`, `/api/dev/sign-in` → 404 (a test proves it)
+- [ ] Migrations ran from the stack-up workflow; the ALB idle timeout is 300 seconds
+- [ ] Stack destroyed at the end; only ECR is left
 
 ---
 
@@ -373,7 +419,7 @@ Task: Real sign-in replaces the dev sign-in from BE-1.0 everywhere except local 
 - [ ] All tests that need a person use either the test auth handler or the real code flow
 
 **FE-13.1 Email and code screens**
-Task: Step 1 asks only for the email. Step 2 asks for the code.
+Task: Step 1 asks only for the email. Step 2 asks for the code. Both steps use React Hook Form + Zod (D37).
 Screen: canvas › *Account — email code sign-in* (steps 1 and 2)
 - [ ] The code field accepts paste and phone autofill (`autocomplete="one-time-code"`)
 - [ ] "Send a new code" stays off until the 60-second timer ends
@@ -381,7 +427,7 @@ Screen: canvas › *Account — email code sign-in* (steps 1 and 2)
 - [ ] After sign-in you go back to where you started
 
 **FE-13.2 Username box**
-Task: Pops up after the first sign-in. Also opened later from the account menu.
+Task: Pops up after the first sign-in. Also opened later from the account menu. React Hook Form + Zod, 1–24 characters as in BE-13.3 (D37).
 Screen: canvas › *Account — email code sign-in* (first sign-in)
 - [ ] Cannot be closed on the first sign-in until a username is saved
 
@@ -473,6 +519,16 @@ Screen: [Figma › Desktop 3](https://www.figma.com/design/R9GNkviHAJtm3fzF1Pykp
 **FE-16.3 Favicon and link preview**
 - [ ] A shared link shows the title and an image in chat apps
 
+**FE-16.4 Error boundaries**
+Task: An error boundary around each route and around the board. A render error shows a recovery screen with Reload, and the error is logged.
+- [ ] A test error thrown inside one card shows the fallback, not a white page
+- [ ] The rest of the app keeps working after the fallback shows
+
+**FE-16.5 Lazy-loaded routes**
+Task: `React.lazy` + `Suspense` for the landing, board, settings and account routes.
+- [ ] The production build shows a separate chunk per route
+- [ ] Opening the landing page does not download the board code (checked in DevTools → Network)
+
 ---
 
 ## F17 — Prove it
@@ -482,8 +538,9 @@ Task: 20 clients, 200 random changes, then compare every client's board (I1).
 - [ ] All 20 boards are identical, in CI
 
 **BE-17.2 Load test**
-Task: k6 with 500 WebSocket connections across 25 boards.
+Task: k6 with 500 WebSocket connections across 25 boards. Then shrink the database pool on purpose, find the exhaustion with `dotnet-counters` and the logs, and fix it.
 - [ ] The p95 delay from one client to another, and the breaking point, are written in the README
+- [ ] The pool-exhaustion run has one before/after number in the README
 
 **BE-17.3 Observability**
 Task: OpenTelemetry logs, metrics and traces. Metrics from `architecture.md` §18.3.
@@ -493,11 +550,44 @@ Task: OpenTelemetry logs, metrics and traces. Metrics from `architecture.md` §1
 Task: One Playwright run: two browsers, drag a card, then a rename conflict.
 - [ ] Passes in CI
 
+**OPS-17.2 Kubernetes on kind**
+Task: Run the API on a local kind cluster: a Deployment with 2 replicas, a Service, an nginx Ingress, a ConfigMap and a Secret, liveness on `/health/live`, readiness on `/health`, resource limits (D39).
+- [ ] Two browsers through the Ingress stay in sync (Redis backplane still works)
+- [ ] Roll out a broken image, diagnose it with `kubectl describe` and `kubectl logs`, then roll back
+- [ ] The ECS ↔ Kubernetes mapping (task definition → Pod spec, service → Deployment, target group → Service/Ingress) is in the README
+
 **DOC-17.1 README**
 - [ ] Demo GIF, architecture diagram, how fractional ranks and `seq` catch-up work, and the load-test numbers
 
 ---
 
-## F18 — Deploy `[pending]`
+## F18 — Deploy the full app `[optional]`
 
-Hosting is not chosen: AWS (built and destroyed on demand) or an Oracle Cloud Always Free server with Coolify. Stories come once it is chosen.
+**Optional, not in the Box Queue (D40).** It lands after the AWS credit ends, so it costs money (about $2.40 a day while up, plus a domain). Do it only if a live link is ever needed. The deployment experience is already covered by F0b and OPS-6.3; the demo, GIF and README numbers come from the local stack (§17). Free alternative for an always-on link: Oracle Cloud Always Free + Coolify (§18).
+
+AWS, reusing the F0b stack (`architecture.md` §18, D35). Stand it up for demos and interviews, then tear it down.
+
+**OPS-18.1 Domain and HTTPS**
+Task: A domain in Route 53, an ACM certificate, an HTTPS listener on the ALB, HTTP redirected to HTTPS. Forwarded headers in the app (`UseForwardedHeaders`, the ALB trusted) so it knows the request was HTTPS (Q9).
+- [ ] The refresh-token cookie is set with `Secure` on the public URL
+- [ ] Links the app builds start with `https://`
+
+**OPS-18.2 Production email with SES**
+Task: SES with the domain verified (SPF and DKIM). The app sends sign-in codes through SES outside Development (D36).
+- [ ] A code reaches a real inbox, not spam
+- [ ] Local development still uses Mailpit
+
+**OPS-18.3 Full stack up**
+Task: Stack-up also seeds a demo board (Q8). WebSockets across the 2 tasks through the ALB with the Redis backplane.
+- [ ] Two devices on the public URL see each other's moves within 1 second
+- [ ] Stopping one task keeps the board live
+
+**OPS-18.4 Dashboard and alarms**
+Task: The custom metrics, the dashboard, the three alarms and the two saved Logs Insights queries from `architecture.md` §18.3.
+- [ ] `RejectedWrites` by part and `RankCollisions` show on the dashboard after a demo run
+- [ ] The billing alarm exists before anything else is created
+
+**OPS-18.5 The full loop**
+Task: Run the §18.4 loop once, end to end, and write it up.
+- [ ] Every step of §18.4 checked, with the stack-up time and the next day's bill
+- [ ] The stack is destroyed at the end

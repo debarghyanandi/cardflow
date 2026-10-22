@@ -1,7 +1,7 @@
 # BE-0.2 local verification â€” 2026-10-19
 
-Implementation and local acceptance checks passed. Claude's review is still pending.
-CI is a separate story, BE-0.5.
+Implementation and local acceptance checks passed. Claude Code's review on 2026-10-22
+is below. CI is a separate story, BE-0.5.
 
 Environment: Windows, .NET SDK 10.0.401, Docker Desktop with Linux containers,
 Docker Engine 29.6.1, Docker Compose 5.2.0, PowerShell 7.6.5.
@@ -40,8 +40,34 @@ passed there.
 
 The normal stack was stopped without deleting its database. The cloned stack
 used a separate Compose project, new containers/network, and a new empty Postgres
-volume; only the volume name was overridden. Startup and the full stack script
+volume. Startup and the full stack script
 passed again. Docker's image/build cache was retained; this was not a new OS or VM.
 
 The verification stack and its temporary volume were removed. The normal stack
-was restored using the original `cardflow-pgdata` volume. No commits were made.
+was restored. No commits were made.
+
+## Claude Code review — 2026-10-22
+
+A clean clone of `ac8f4d2` built with 0 warnings and passed 10 of 10 tests. The API
+image was rebuilt with `--no-cache`, and `scripts/Test-LocalStack.ps1` passed every
+check. All five acceptance criteria were met.
+
+Fixed during the review:
+
+- **nginx logged query strings.** `$request` includes the query string, and the hub's
+  `access_token` will travel there (`architecture.md` §8). The log now uses
+  `$request_method $uri $server_protocol`. The stack script sends a random marker as
+  `access_token` and fails if the marker appears in the nginx log.
+- **Dockerfile layer order.** Project files are copied and restored first, then `src/`
+  is copied, then `publish --no-restore` runs. After a `.cs` change, restore stays cached.
+- **Name clash.** The Infrastructure extension class `ServiceCollection` shadowed
+  `Microsoft.Extensions.DependencyInjection.ServiceCollection`. It is now
+  `InfrastructureServiceCollectionExtensions`, in a file of the same name.
+- **WebSocket upgrade through nginx.** `Upgrade` and `Connection` are passed on, ready
+  for the hub in BE-0.4.
+- **Shared database volume.** The fixed volume name `cardflow-pgdata` is removed.
+  Compose now scopes the volume to the project (`cardflow_pgdata`), so every clone
+  starts empty. The key is `pgdata`, not `postgres_data`: a v1 volume named
+  `cardflow_postgres_data` still exists on this machine with other credentials, and the
+  stack script caught the resulting 503s. After the change, all checks passed on a new volume.
+- This note moved from `iac/` to `docs/verification/`.

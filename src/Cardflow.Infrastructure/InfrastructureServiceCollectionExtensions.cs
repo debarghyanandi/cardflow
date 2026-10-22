@@ -1,7 +1,7 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 namespace Cardflow.Infrastructure
 {
-    public static class ServiceCollection
+    public static class InfrastructureServiceCollectionExtensions
     {
         public static IServiceCollection AddInfrastructureHealthChecks(
             this IServiceCollection services,

@@ -37,16 +37,18 @@ development credentials. Published ports bind only to `127.0.0.1`.
 
 If you still have the earlier standalone containers, keep `cardflow-postgres` and
 `cardflow-redis` stopped before starting Compose: they use the same host ports.
-The Postgres volume is named `cardflow-pgdata`, so Compose can reuse the database
-created during BE-0.1. On a clean machine, Compose creates it automatically.
-Postgres initialization settings only apply to an empty volume.
+Compose names the Postgres volume after the project (`cardflow_pgdata`), so
+each clone or project name gets its own empty database. The old `cardflow-pgdata`
+volume from BE-0.1 is no longer used; remove it with `docker volume rm cardflow-pgdata`
+once you no longer need its data. `cardflow_postgres_data`, if present, is left over
+from v1 and uses other credentials; it is not used either. Postgres initialization settings only apply to an
+empty volume.
 
 ```powershell
 docker stop cardflow-postgres cardflow-redis
 ```
 
-Run that command only if those old containers exist. Do not run them alongside
-the Compose Postgres, because they share the same data volume.
+Run that command only if those old containers exist.
 
 ## Check BE-0.2
 
@@ -60,7 +62,7 @@ then stops `api-1` and requires 12 consecutive successful requests from `api-2`.
 It restores `api-1` in a `finally` block and checks that both instances serve again.
 Run this against your local development stack; it briefly interrupts `api-1`.
 Rebuild with `docker compose up --build -d --wait` first after changing API code.
-Recorded local results are in [BE-0.2 verification](iac/BE-0.2-verification.md).
+Recorded local results are in [BE-0.2 verification](docs/verification/BE-0.2.md).
 
 To see the instance names yourself:
 
@@ -94,5 +96,4 @@ docker compose down
 
 The integration tests start their own temporary Postgres and Redis containers.
 The unit test project currently has no tests. `docker compose down` preserves the
-named database volume. `docker compose down --volumes` deletes the local database,
-including any data reused from BE-0.1.
+database volume. `docker compose down --volumes` deletes the local database.
