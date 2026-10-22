@@ -46,16 +46,47 @@ passed again. Docker's image/build cache was retained; this was not a new OS or 
 The verification stack and its temporary volume were removed. The normal stack
 was restored. No commits were made.
 
-## Claude Code review — 2026-10-22
+## Claude Code review â€” 2026-10-22
 
-A clean clone of `ac8f4d2` built with 0 warnings and passed 10 of 10 tests. The API
-image was rebuilt with `--no-cache`, and `scripts/Test-LocalStack.ps1` passed every
-check. All five acceptance criteria were met.
+The review started at `ac8f4d2`. The fixes listed below are in `a9d1ea0`. The
+query-string check was added by those fixes, so `ac8f4d2` did not run it. The results
+in this section are from a run on `a9d1ea0`.
 
-Fixed during the review:
+### Final verification on `a9d1ea0`
+
+Run from a fresh clone of `a9d1ea0`:
+
+- Environment: Linux (Ubuntu 24.04), Docker Engine 29.9.1, Docker Compose v5.6.0,
+  PowerShell 7.6.7. This was not a Windows machine.
+- The build and tests ran in `mcr.microsoft.com/dotnet/sdk:10.0.401`, because the host's
+  .NET SDK (10.0.113) does not match `global.json`.
+- `dotnet build Cardflow.slnx`: 0 warnings, 0 errors.
+- `dotnet test Cardflow.slnx`: 10 passed, 0 failed, 0 skipped. `Cardflow.Tests.Unit`
+  contains no tests.
+- `docker compose build --no-cache`: succeeded.
+- `pwsh -NoProfile -File scripts/Test-LocalStack.ps1`: exit 0. Every PASS line:
+
+  ```
+  PASS: both API container health checks use /health/live.
+  PASS: /health through nginx reaches api-1 and api-2.
+  PASS: Mailpit web interface returns 200.
+  PASS: nginx access log leaves out query strings.
+  PASS: 12 requests returned 200 from api-2 with api-1 stopped.
+  PASS: /health through nginx reaches api-1 and api-2.
+  PASS: BE-0.2 local stack checks passed; both APIs are running.
+  ```
+
+- All five BE-0.2 acceptance criteria passed.
+- Not run: a clean-machine check on Windows with Docker Desktop.
+
+The sandbox needed a Docker registry mirror (anonymous Docker Hub pulls were rate
+limited) and a trusted proxy certificate authority for the build. Neither change is in
+the repo.
+
+### Fixed during the review (in `a9d1ea0`)
 
 - **nginx logged query strings.** `$request` includes the query string, and the hub's
-  `access_token` will travel there (`architecture.md` §8). The log now uses
+  `access_token` will travel there (`architecture.md` Â§8). The log now uses
   `$request_method $uri $server_protocol`. The stack script sends a random marker as
   `access_token` and fails if the marker appears in the nginx log.
 - **Dockerfile layer order.** Project files are copied and restored first, then `src/`
