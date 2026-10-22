@@ -2,10 +2,10 @@
 
 > **Name:** Cardflow. Chosen before the first commit for the repo, namespace and URL.
 
-> **Written by:** Claude, for Debarghya. **Built by:** Debarghya, by hand. AI reviews; it does not write the code.
+> **Written by:** Claude, for Debarghya. **Built by:** Debarghya, story by story, guided by the "Build — Cardflow" chat; Claude Code verifies each finished story (§0, D38).
 > **Authoritative copy:** this file, in the root of the build repo.
 > **Design:** Figma "Card flow 2" — https://www.figma.com/design/R9GNkviHAJtm3fzF1PykpO/Card-flow-2 is the original design. The screens added or changed for v2 live on the **"Cardflow v2 Screens" canvas** — https://claude.ai/artifact/EMEXmxWSgYpWUt3zxvMPiA — because the Figma account has a view-only seat.
-> **Last updated:** 2026-10-07 — v2.3. Everyone signs in — email + one-time code, then access and refresh tokens; username set on first sign-in. No guests. Hosting pending; sign-in built after the core. Stories live in `stories.md`.
+> **Last updated:** 2026-10-19 — v2.5. No paid AWS: the real-time core redeploys in OPS-6.3 before 7 December; F18 is optional (D40). v2.4: Hosting decided: AWS, with the skeleton deployed early (F0b) to use the credit before 7 December (D35). SES for production email (D36). Forms on React Hook Form + Zod, API responses validated with Zod (D37). New build workflow: the build chat teaches and gives code blocks, Claude Code verifies (D38). Kubernetes on kind as a local learning target (D39). Stories live in `stories.md`.
 
 ---
 
@@ -25,7 +25,14 @@
 2. **Do not break an invariant in §3.** If one seems wrong, stop and raise it.
 3. **This is a portfolio project.** The demo and the README are deliverables, not an afterthought. A feature nobody can see in 60 seconds is worth less than one they can.
 4. **Plain English in every document.** Short sentences. Keep real technical terms, and explain each one the first time it appears.
-5. **I write the code.** An AI may explain, review and point at problems. It does not hand me finished files.
+5. **I type the code, and I must be able to explain every line.** The build chat teaches each story and gives code blocks; it explains the mechanism and the failure mode, not just the syntax (D38).
+
+### How a story gets built (D38)
+
+1. **Build chat** ("Build — Cardflow", in the Claude project) reads this file, `stories.md` and the repo. We agree the request/response and hub message shapes first. It teaches what the story needs and gives code blocks. I write the code in my IDE, and we discuss.
+2. **I say "done".** The build chat reviews the code straight from the repo against the story's acceptance criteria, then gives me a short prompt for Claude Code.
+3. **Claude Code**, in the repo on my machine: builds, runs the tests, checks every acceptance criterion, runs the story's manual check where it can, and reports pass or fail. It does not change code unless I ask.
+4. **Fail** → I take the report back to the build chat. **Pass** → I tell the build chat; it ticks the criteria in `stories.md`. I commit.
 
 ### What changed from v1
 
@@ -112,7 +119,8 @@ A feature that breaks one of these is a bug, not a trade-off. Each one gets an a
 - Reconnect with catch-up
 - Two or more server instances, proven
 - A load test with a published number
-- **Deployment** `[pending]`: AWS built and destroyed on demand, or an Oracle Cloud Always Free server with Coolify (§18)
+- **Deployment:** AWS, built and destroyed on demand (§18, D35) — the skeleton early (F0b), the full app at the end (F18)
+- **Kubernetes on kind**, local only, as a second deploy target for learning (D39)
 - Dashboards, alarms and log queries on whichever host is chosen
 
 ### Cut `[decided]`
@@ -670,9 +678,11 @@ Record and publish:
 | Cache / presence | **Redis** | `[decided]` | Sorted sets with timestamps are exactly right for presence |
 | Sign-in | **Email code + JWT bearer + rotating refresh token**, built by hand on ASP.NET Core's JWT handler | `[decided]` | Small enough to write and explain yourself (D29, D30) |
 | Email (local) | **Mailpit** in Compose | `[decided]` | Catches every email; tests read codes from its API |
-| Email (production) | Resend, Amazon SES or Brevo | `[pending]` | Q15, chosen with the host |
+| Email (production) | **Amazon SES** | `[decided]` | D36 — same cloud as the host; needs a verified domain |
 | Frontend | **React + TypeScript**, Vite | `[decided]` | |
 | Drag and drop | **dnd-kit** | `[proposed]` | Accessible, maintained |
+| Forms | **React Hook Form + Zod** | `[decided]` | D37 — one schema per form; the same rules as the API |
+| API response checks | **Zod** schemas on every response | `[decided]` | D37 — TypeScript types vanish at run time; a wrong response shows an error, not a broken screen |
 | Server state | **TanStack Query** | `[proposed]` | REST load only. Live state comes from the hub |
 | Client state | **React state + pure board projector** | `[decided]` | One board model; replay and rollback can be tested without a browser. See Q11 |
 | Styling | **Tailwind CSS v4**, theme tokens from §5 | `[proposed]` | The design exists now, so build it from F0. Tokens live in one place |
@@ -682,8 +692,9 @@ Record and publish:
 | Local | Docker Compose — Postgres, Redis, **two API instances**, nginx, Mailpit | `[decided]` | Two instances from day one, so I6 is never skipped |
 | Observability | **OpenTelemetry** | `[decided]` | Logs, metrics, traces. Where they go depends on the host (§18) |
 | CI | GitHub Actions | `[decided]` | |
-| Deploy target | AWS on demand **or** Oracle Cloud Always Free + Coolify | `[pending]` | D27, §18, §19 |
-| Deploy tool | AWS CDK in C# (if AWS) · Coolify (if Oracle) | `[pending]` | Q6 |
+| Deploy target | **AWS, built and destroyed on demand** | `[decided]` | D35, §18, §19 |
+| Deploy tool | **AWS CDK in C#** | `[decided]` | D35 — same language as the app |
+| Local orchestration (learning) | **Kubernetes on kind** | `[decided]` | D39 |
 
 ---
 
@@ -735,7 +746,7 @@ One board has one confirmed snapshot plus at most one pending move. A pure proje
 **D14 — Presence expires in 20 seconds, swept every 5 seconds.** `[decided]` 2026-09-27
 The original 30-second expiry and 15-second sweep could leave an orphan visible for about 45 seconds, contradicting Phase 4's under-30-second acceptance condition. Keep the 10-second client heartbeat, but expire after 20 seconds and sweep every five. Normal disconnect removes presence immediately; the Redis sweep handles missed disconnects. One connection owns one board membership, while the UI groups multiple tabs by member ID.
 
-**D15 — Rebuild from Phase 0, by hand, to the Card flow 2 design.** `[decided]` 2026-10-06
+**D15 — Rebuild from Phase 0, by hand, to the Card flow 2 design.** `[decided]` 2026-10-06 — *how the code gets written: replaced by D38*
 v1 reached Phase 4 with AI writing the code. v2 starts again from an empty repo. I write the code; AI reviews it. *Why:* being able to explain and debug every line matters more than having it sooner.
 
 **D16 — Four fixed columns: Ideas, Doing, Review, Done.** `[decided]` 2026-10-06
@@ -772,7 +783,7 @@ Replaces the OIDC part of D18. Board creators make an account with a user ID and
 **D26 — A password reset drops all board access.** `[decided]` 2026-10-07 — *void: no passwords after D29*
 No email is collected. A reset sets a new password, removes every board membership (admin roles included) and signs out every session. Created boards stay, without an admin. *Why:* without email there is no safe way to prove ownership, so a reset must not hand back anything valuable. Open weakness: Q14.
 
-**D27 — Hosting is undecided.** `[pending]` 2026-10-07
+**D27 — Hosting is undecided.** `[pending]` 2026-10-07 — *closed by D35*
 AWS built and destroyed on demand (§18), or an Oracle Cloud Always Free server running Coolify. Decide before the deploy feature (F18 in `stories.md`). *Why parked:* the core does not depend on it.
 
 **D28 — Accounts are built after the core.** `[decided]` 2026-10-07
@@ -804,6 +815,24 @@ With stable accounts, removal is attached to the account, not the link. The join
 
 *Why:* routing on the full report would turn a Redis blip into a full outage, even though REST loads still work from Postgres (§6). *Cost:* an instance that loses Redis keeps serving and silently breaks I6 for its clients. A failing `/health` must raise an alarm; it is not a routing signal.
 
+**D35 — Hosting: AWS, built and destroyed on demand. The skeleton goes up early.** `[decided]` 2026-10-19
+Closes D27 and Q6. AWS with CDK in C#, as designed in §18. The F0 skeleton (health, two API instances, Postgres, Redis) is deployed in a new block, **F0b**, before the $190 credit ends on 7 December. F18 later redeploys the full app with a domain, HTTPS and email. *Why:* AWS is on my resume and in the job ads; deploying the skeleton early uses the credit and puts the infrastructure risk at the start, not the end. Oracle + Coolify stays a fallback if cost ever matters more.
+
+**D36 — Production email: Amazon SES.** `[decided]` 2026-10-19
+Closes Q15. *Why:* same cloud as the host, cheap, and its domain setup (SPF, DKIM) is the same work any provider needs. Mailpit stays the local catcher.
+
+**D37 — Forms on React Hook Form + Zod; API responses checked with Zod.** `[decided]` 2026-10-19
+The landing, sign-in, username and card forms use React Hook Form with a Zod schema that mirrors the API's rules. Every API response is parsed with a Zod schema before use. *Why:* the two form libraries interviewers ask about, used for real; and TypeScript types vanish at run time, so a response check is the only real guarantee.
+
+**D38 — Build workflow: build chat teaches, Claude Code verifies.** `[decided]` 2026-10-19
+Replaces the "AI reviews; it does not write the code" half of D15. The build chat teaches each story and gives code blocks; I type them and must be able to explain every line. Claude Code checks each finished story locally (§0). *Why:* the build chat cannot run the SDK; Claude Code can. Typing and explaining keeps the learning; the code blocks keep the pace.
+
+**D39 — Kubernetes on kind, local only.** `[decided]` 2026-10-19
+One story (OPS-17.2) runs Cardflow as a Deployment on a local kind cluster. Never EKS — the control plane alone costs about $73 a month. *Why:* Kubernetes is on my resume; this makes it real without the cost.
+
+**D40 — No paid AWS: two deploys on the credit, F18 optional.** `[decided]` 2026-10-19
+The skeleton deploys in F0b, and the real-time core redeploys in OPS-6.3 — both before the credit ends on 7 December, each torn down after testing. OPS-6.3 runs before sign-in exists, so a `Staging` environment may enable the dev sign-in with an explicit switch (`DevSignIn__Enabled`); it never exists in `Production`. F18 (domain, HTTPS, SES, full app) is optional and outside the Box Queue. *Why:* the goal is the deployment experience, not a paid live site. The demo runs locally.
+
 ---
 
 ## 14. Open questions
@@ -818,7 +847,7 @@ With stable accounts, removal is attached to the account, not the link. The join
 
 **Q5 — Abuse.** The board is open to anyone with the link. Rate limit per connection, a card cap per board, a subtask cap per card. What are the numbers?
 
-**Q6 — CDK or Terraform?** Only if AWS is chosen (D27). CDK is C#, so it is the same language as the app. Terraform appears in more job descriptions.
+**Q6 — CDK or Terraform?** `[closed]` by D35 — CDK in C#.
 
 **Q7 — How long does the stack take to come up from nothing?** RDS is the slow part and can take 10 minutes on its own. Measure it and write the number down.
 
@@ -836,7 +865,7 @@ With stable accounts, removal is attached to the account, not the link. The join
 
 **Q14 — Password reset ownership.** `[closed]` by D29 — there are no passwords, and the emailed code proves ownership.
 
-**Q15 — Which email service in production?** Resend, Amazon SES or Brevo. Free tiers differ, and each needs a verified domain (SPF and DKIM records) or codes land in spam. Choose with the host (D27).
+**Q15 — Which email service in production?** `[closed]` by D36 — Amazon SES. It still needs a verified domain (SPF and DKIM records) or codes land in spam.
 
 **Q16 — Can a person change their email?** Not in scope now. If added, it needs a code sent to the new address.
 
@@ -849,13 +878,15 @@ The build follows the features in **`stories.md`** (F0–F18), one feature at a 
 | Block | Features | Ends with |
 |---|---|---|
 | **Skeleton** | F0 | Every layer runs locally; a ping crosses two API instances; CI green |
+| **Early deploy** | F0b | The skeleton runs on AWS — two Fargate tasks behind an ALB, RDS, ElastiCache — and is torn down again; **before 7 December** (D35) |
 | **Board and cards** | F1–F4 | Create, join, add, edit, delete and drag cards — signed in through the dev sign-in (D28) |
 | **Real-time core** | F5–F6 | Two browsers on two instances stay identical; reconnect without refresh (I1, I5, I6) |
 | **Rich cards** | F7–F9 | Due dates, assignees, subtasks, and conflicts handled per part (D17) |
 | **Live feel** | F10–F12 | Search, presence, cursors, share |
 | **Accounts and admin** | F13–F15 | Email-code sign-in, tokens, username, delete board, remove member, reset link |
 | **Finish and prove** | F16–F17 | Every screen done, convergence and load tests, README |
-| **Deploy** `[pending]` | F18 | Public URL on the chosen host (D27) |
+| **Second deploy** | OPS-6.3 (end of F6) | The real-time core on AWS across two tasks, then torn down — **before 7 December** (D40) |
+| **Deploy** `[optional]` | F18 | The full app with a domain, HTTPS and SES — only if a live link is needed; costs money (D40) |
 
 **Rough size:** about 65 hours for Skeleton to Live feel, about 105 hours for everything except Deploy. At 2–3 hours a day, the core is about a month.
 
@@ -889,9 +920,9 @@ Record the demo GIF and the full screen recording from the **local** run. Then t
 
 ---
 
-## 18. Deployment `[pending]`
+## 18. Deployment — AWS `[decided]` (D35)
 
-**Not decided (D27).** Two options:
+**Decided: AWS, built and destroyed on demand (D35).** The comparison that led there:
 
 | | AWS, built and destroyed on demand | Oracle Cloud Always Free + Coolify |
 |---|---|---|
@@ -901,7 +932,7 @@ Record the demo GIF and the full screen recording from the **local** run. Then t
 | Two API instances | Two Fargate tasks behind an ALB | Two containers behind Coolify's proxy, on one machine |
 | Risk | Forgetting to tear down | Oracle can reclaim idle free servers; ARM CPU, so images must build for `arm64` |
 
-The rest of this section is the AWS design, kept for when the choice is made.
+The rest of this section is the AWS design. F0b builds the first version of it for the skeleton; F18 completes it.
 
 ### Option A — AWS, built to be destroyed
 
@@ -1027,6 +1058,6 @@ WebSockets are long-lived connections, so this cannot be serverless. While the s
 
 That is the whole point of §18. A week of being live during an interview process costs under $20.
 
-**AWS credit: $190, expiring around 7 December 2026.** If AWS is chosen and the core takes about a month, there is still time to use it.
+**AWS credit: $190, expiring around 7 December 2026.** F0b (OPS-0.6 to OPS-0.9) uses it on the skeleton, and OPS-6.3 on the real-time core. **No paid AWS is planned (D40):** F18 is optional and would cost about $2.40 a day while the stack is up.
 
 **The billing alarm at $25 is not optional.** The realistic failure here is not a design mistake. It is forgetting to run `stack-down` on a Friday.
